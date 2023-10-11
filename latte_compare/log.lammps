@@ -1,0 +1,48 @@
+LAMMPS (23 Jun 2022)
+# To be used with the latte-lib input file.
+
+units		metal
+atom_style	full
+atom_modify    sort 0 0.0  # This is to avoid sorting the coordinates
+box tilt large
+
+read_data tegt.data
+Reading data file ...
+  triclinic box = (0 0 0) to (6.5085482 5.6365681 43.35) with tilt (-3.2542741 0 0)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  28 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.002 seconds
+  read_data CPU = 0.005 seconds
+group top type 1
+14 atoms in group top
+group bottom type 2
+14 atoms in group bottom
+
+mass 1 12.0100
+mass 2 12.0200
+
+velocity	all create 0.0 87287 loop geom
+# Interaction potential for carbon atoms
+######################## Potential defition ########################
+pair_style zero 5.0 nocoeff
+pair_coeff * *
+####################################################################
+
+
+timestep 0.00025
+
+variable latteE equal "(ke + f_2)"
+variable kinE equal "ke"
+variable potE equal "f_2"
+
+thermo 1
+thermo_style   custom step pe ke etotal temp v_latteE
+log log.test
