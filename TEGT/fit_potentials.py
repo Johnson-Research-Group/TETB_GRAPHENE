@@ -203,7 +203,7 @@ if __name__ == '__main__':
     parser.add_argument('-f','--fit',type=str,default='True')
     parser.add_argument('-s','--test',type=str,default='False')
     parser.add_argument('-k','--nkp',type=str,default='225')
-    parser.add_argument('-o','--output',type=str,default="fit_"+args.tbmodel+"_"+args.type)
+    parser.add_argument('-o','--output',type=str,default="fit_"+args.tbmodel+"_"+args.type+"_nkp"args.nkp)
     args = parser.parse_args() 
     
     kd = np.sqrt(int(args.nkp))
