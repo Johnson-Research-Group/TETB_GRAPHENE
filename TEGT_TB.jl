@@ -118,7 +118,7 @@ function generate_monkhorst_pack_grid(nkx::Int, nky::Int, nkz::Int)
     return kpoints
 end
 
-function JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params,device_num,device_type,rcut = 10)
+function JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params_str,device_num,device_type,rcut = 10)
     params = get_param_dict(params_str)
     recip_cell = get_recip_cell(cell)
     if size(kpoints) == (3,)
@@ -197,8 +197,8 @@ function get_param_dict(params_str)
     if params_str=="popov"
         params = Dict("B"=>Dict("B"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7), 
                          "Ti"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29)),
-              "Ti"=>Dict("B"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29), 
-                         "Ti"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7) ))
+              "Ti"=>Dict("B"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29), 
+                         "Ti"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7) ))
 
     else #params_str=="nn"
         params = Dict("B"=>Dict("B"=>Dict("hopping"=>nnhop,"ovrlp"=>overlapIntra,"self_energy"=>0,"rcut"=>3), 
@@ -211,12 +211,10 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     #write test code
-    twist_angle = 9.43
-    atoms = get_tBLG_atoms(twist_angle)
-    atom_positions = atoms["positions"]
-    cell = atoms["cell"]
-    atom_types = atoms["symbols"]
-    params_str="mk"
+    atom_positions = [0 0 0; 1.42 0 0; 0 1.42 0; 1.42 1.42 0]
+    cell = [2.84 0 0; 0 2.84 0 ; 0 0 10]
+    atom_types = ["B" "B" "Ti" "Ti"]
+    params_str="popov"
     kpoints = [0 0 0]
     println("testing total energy and force calculations")
     Energy, Forces = JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params_str,1,"cpu")

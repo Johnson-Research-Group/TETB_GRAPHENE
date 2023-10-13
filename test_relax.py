@@ -82,24 +82,12 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     fig.savefig(figname)
     plt.clf()
     
-def get_latte_energy(atoms):
-    
-    cwd = os.getcwd()
-    os.chdir("latte_compare")
-    ase.io.write("tegt.data",atoms,format="lammps-data",atom_style="full")
-    subprocess.call("/home/dpalmer/lammps_latte/src/lmp_serial<lammps.in",shell=True)
-    atoms = ase.io.read("dump.tegt_latte")
-    forces = atoms.get_forces()
-    log = lammps_logfile.File("log.test")
-    energy = log.get("TotEng")
-    os.chdir(cwd)
-    return energy,forces
-    
+   
 if __name__=="__main__":
-    test_tbforces=True
+    test_tbforces=False
     test_tbenergy=False
     test_lammps=False
-    test_bands=False
+    test_bands=True
     test_relaxation=False
     test_scaling=False
     theta = 21.78
@@ -153,18 +141,7 @@ if __name__=="__main__":
         #print(tb_forces_fd/tb_forces)
         print("force difference/atom between fd and hellman feynman= ",np.mean(np.linalg.norm(tb_forces_fd-tb_forces,axis=1)))
         
-        
-        
-        #compare forces to latte on same structure
-        atoms = ase.io.read("latte_compare/dump.tegt_latte")
-        latte_forces = atoms.get_forces()
-        latte_energy = -91.085196
-        print("latte force\n",latte_forces)
-        print("LATTE <forces>",np.mean(np.linalg.norm(latte_forces,axis=1)))
-        
-        # print("Energy difference/atom = ",(tb_energy-latte_energy)/atoms.get_global_number_of_atoms())
-        print("latte vs. Julia force difference/atom = ",np.mean(np.linalg.norm(latte_forces-tb_forces,axis=1)))
-        
+       
     if test_scaling:
         import time
         from scipy.optimize import curve_fit
@@ -242,11 +219,11 @@ if __name__=="__main__":
         Kprime = [1/3,2/3,0]
         M = [1/2,0,0]
         sym_pts=[K,Gamma,M,Kprime]
-        nk=40
+        nk=100
         kdat = calc_obj.k_path(sym_pts,nk)
         kpoints = kdat[0]
         evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
-        plot_bands(evals,kdat,erange=2.0,title=r'$\theta=21.78^o$',figname="theta_21_78.png")
+        plot_bands(evals,kdat,erange=5.0,title=r'$\theta=21.78^o$',figname="theta_21_78.png")
         
     if test_relaxation:
         #test relaxation

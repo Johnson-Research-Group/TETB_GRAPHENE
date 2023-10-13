@@ -11,6 +11,10 @@ function popov_hopping(dR)
     m = dRn[2]
     n = dRn[3]
     r = norm(dR)
+    if r > 10 || r < 1
+        return 0
+    end
+
 
     aa = 1.0 #[Bohr radii]
     b = 10.0 #[Bohr radii]
@@ -52,6 +56,9 @@ function overlapInter(dR)
     m = dRn[2]
     n = dRn[3]
     r = norm(dR)
+    if r > 10 || r < 1
+        return 0
+    end
 
     aa = 1.0 #[Bohr radii]
     b = 10.0 #[Bohr radii]
@@ -94,6 +101,9 @@ function porezag_hopping(dR)
     m = dRn[2]
     n = dRn[3]
     r = norm(dR)
+    if r > 7 || r < 1
+        return 0
+    end
 
     aa = 1.0 #[Bohr radii]
     b = 7.0 #[Bohr radii]
@@ -135,6 +145,9 @@ function overlapIntra(dR)
     m = dRn[2]
     n = dRn[3]
     r = norm(dR)
+    if r > 7 || r < 1
+        return 0
+    end
 
     aa = 1.0 #[Bohr radii]
     b = 7.0 #[Bohr radii]
