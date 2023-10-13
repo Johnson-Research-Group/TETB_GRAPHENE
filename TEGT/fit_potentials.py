@@ -18,14 +18,55 @@ import argparse
 import subprocess
 import ase.db
 import glob
-import mlflow
+#import mlflow
+from ase.build import make_supercell
 
-def get_bilayer_atoms(d,disregistry, a=2.462,c=15, zshift='CM'):
-    a_nn = a/np.sqrt(3)
-    stack = np.array([[0,0],[3*disregistry*a_nn+a_nn,0]])
-    atoms = fg.shift.make_graphene(stacking=stack,cell_type='rect',
-                        n_layer=2,n_1=5,n_2=5,lat_con=a,
-                        sep=d,sym=["B",'Ti'],mass=[12.01,12.02],h_vac=c)
+
+def get_basis(a, d, c, disregistry, zshift='CM'):
+
+    '''
+    `disregistry` is defined such that the distance to disregister from AB to AB again is 1.0,
+    which corresponds to 3*bond_length = 3/sqrt(3)*lattice_constant = sqrt(3)*lattice_constant
+    so we convert the given `disregistry` to angstrom
+    '''
+    disregistry_ang = 3**0.5*a*disregistry
+    orig_basis = np.array([
+        [0, 0, 0],
+        [0, a/3**0.5, 0],
+        [0, a/3**0.5 + disregistry_ang, d],
+        [a/2, a/(2*3**0.5) + disregistry_ang, d]
+        ])
+
+    # for open boundary condition in the z-direction
+    # move the first layer to the middle of the cell
+    if zshift == 'first_layer':
+        z = c/2
+    # or move the center of mass to the middle of the cell
+    elif zshift == 'CM':
+        z = c/2 - d/2
+    shift_vector = np.array([0, 0, z])
+    shifted_basis = orig_basis + shift_vector
+    return shifted_basis.tolist()
+
+def get_lattice_vectors(a, c):
+    return [
+        [a, 0, 0],
+        [1/2*a, 1/2*3**0.5*a, 0],
+        [0, 0, c]
+        ]
+
+def get_bilayer_atoms(d,disregistry, a=2.46, c=20, sc=5,zshift='CM'):
+    '''All units should be in angstroms'''
+    symbols = ["B","B","Ti","Ti"]
+    atoms = ase.Atoms(
+        symbols=symbols,
+        positions=get_basis(a, d, c, disregistry, zshift=zshift),
+        cell=get_lattice_vectors(a, c),
+        pbc=[1, 1, 1],
+        tags=[0, 0, 1, 1],
+        )
+    
+    atoms = make_supercell(atoms, [[sc, 0, 0], [0, sc, 0], [0, 0, 1]])
     return atoms
 
 def get_monolayer_atoms(dx,dy,a=2.462):
@@ -161,29 +202,24 @@ if __name__ == '__main__':
     parser.add_argument('-g','--gendata',type=str,default="False")
     parser.add_argument('-f','--fit',type=str,default='True')
     parser.add_argument('-s','--test',type=str,default='False')
+    parser.add_argument('-k','--nkp',type=str,default='225')
     parser.add_argument('-o','--output',type=str,default="fit_"+args.tbmodel+"_"+args.type)
     args = parser.parse_args() 
-
-    #gen_data_bilayer = False
-    #gen_data_monolayer=False
-    #fit_KC_model = False
-    #fit_rebo_model = False
-    #test_kc_model=True
-    #test_rebo_model=False
     
+    kd = np.sqrt(int(args.nkp))
+    kmesh = (kd,kd,1)
     model_dict = dict({"tight binding parameters":args.tbmodel, 
                           "basis":"pz",
-                          "kmesh":(15,15,1),
+                          "kmesh":kmesh,
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'label':args.output})
     
     calc_obj = TEGT_calc.TEGT_Calc(model_dict)
-    
+    nkp = str(int(np.prod(kmesh)))
     if args.gendata==bool(True) and args.type=="interlayer":
-    #if gen_data_bilayer:
-        db = ase.db.connect('data/bilayer_nkp225.db')
-        df = pd.read_csv('data/qmc.csv')
+        db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
+        df = pd.read_csv('../data/qmc.csv')
         for i, row in df.iterrows():
             print(i)
             atoms = get_bilayer_atoms(row['d'], row['disregistry'])
@@ -191,8 +227,7 @@ if __name__ == '__main__':
             db.write(atoms,data={"total_energy":row["energy"],'tb_energy':tb_energy/len(atoms)})
 
     if args.type=="interlayer" and bool(args.fit):      
-    #if fit_KC_model:
-        db = ase.db.connect('data/bilayer_nkp225.db')
+        db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         E0 = -154
         p0= [4.728912880179687, 32.40993806452906, -20.42597835994438,
              17.187123897218854, -23.370339868938927, 3.150121192047732,
@@ -203,9 +238,8 @@ if __name__ == '__main__':
         print(pfinal.x)
 
     if args.gendata==bool(True) and args.type=="intralayer":   
-    #if gen_data_monolayer:
-        db = ase.db.connect('data/monoayer_nkp225.db')
-        file_list = glob.glob("../tBLG_DFT/calc*",recursive=True)
+        db = ase.db.connect('../data/monoayer_nkp'+nkp+'.db')
+        file_list = glob.glob("../../tBLG_DFT/calc*",recursive=True)
         for f in file_list:
             atoms = ase.io.read(os.path.join(f,"log"),format="espresso")
             total_energy = atoms.get_potential_energy()
@@ -213,8 +247,7 @@ if __name__ == '__main__':
             db.write(atoms,data={"total_energy":total_energy/len(atoms),'tb_forces':tb_forces,'tb_energy':tb_energy/len(atoms)})
 
     if args.type=="intralayer" and bool(args.fit):
-    #if fit_rebo_model:
-        db = ase.db.connect('data/monolayer_nkp225.db')
+        db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
         p0 = [0.4787439526021916 ,4.763581262711529,10493.065144313845,11193.716433093443,
               -4.082242700692129,4.59957491269822, 0.07885385443664605,E0]
@@ -224,7 +257,6 @@ if __name__ == '__main__':
         print(pfinal.x)
 
     if args.type=="interlayer" and bool(args.test):    
-    #if test_kc_model:
         stacking_ = ["AB","SP","Mid","AA"]
         disreg_ = [0 , 0.16667, 0.5, 0.66667]
         colors = ["blue","red","black","green"]
@@ -264,7 +296,6 @@ if __name__ == '__main__':
         plt.show()
         
     if args.type=="intralayer" and bool(args.test):
-    #if test_rebo_model:
         a = 2.462
         n=10
         lat_con_list = np.linspace((1-0.005)*a,(1.005)*a,n)

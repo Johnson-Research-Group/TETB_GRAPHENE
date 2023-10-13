@@ -26,6 +26,7 @@ from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
 from mpi4py import MPI
+import TEGT
 
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
@@ -38,17 +39,16 @@ class TEGT_Calc(Calculator):
         self.model_dict=model_dict
         self.device_num = device_num
         self.device_type = device_type
-        self.repo_root = os.getcwd()
+        repo_root = "/".join(TEGT.__file__.split("/")[:-1])
         self.option_to_file={
-                     "Rebo":os.path.join(self.repo_root,"parameters/intralayer_correction/CH.rebo"),
-                     "Pz pairwise":os.path.join(self.repo_root,"parameters/intralayer_correction/pz_pairwise_correction.table"),
-                     "Pz rebo":os.path.join(self.repo_root,"parameters/intralayer_correction/CH_pz.rebo"),
-                     "Pz rebo nkp225":os.path.join(self.repo_root,"parameters/intralayer_correction/CH_pz.rebo_nkp225"),
-                     "kolmogorov crespi":os.path.join(self.repo_root,"parameters/interlayer_correction/fullKC.txt"),
-                     "KC inspired":os.path.join(self.repo_root,"parameters/interlayer_correction/KC_insp.txt"),
-                     "Pz KC inspired":os.path.join(self.repo_root,"parameters/interlayer_correction/KC_insp_pz.txt"),
-                     "Pz KC inspired nkp225":os.path.join(self.repo_root,"parameters/interlayer_correction/KC_insp_pz.txt_nkp225"),
-                     "Pz kolmogorov crespi":os.path.join(self.repo_root,"parameters/interlayer_correction/fullKC_pz.txt")
+                     "Rebo":os.path.join(repo_root,"parameters/intralayer_correction/CH.rebo"),
+                     "Pz pairwise":os.path.join(repo_root,"parameters/intralayer_correction/pz_pairwise_correction.table"),
+                     "Pz rebo":os.path.join(repo_root,"parameters/intralayer_correction/CH_pz.rebo"),
+                     "Pz rebo nkp225":os.path.join(repo_root,"parameters/intralayer_correction/CH_pz.rebo_nkp225"),
+                     "kolmogorov crespi":os.path.join(repo_root,"parameters/interlayer_correction/fullKC.txt"),
+                     "KC inspired":os.path.join(repo_root,"parameters/interlayer_correction/KC_insp.txt"),
+                     "Pz KC inspired":os.path.join(repo_root,"parameters/interlayer_correction/KC_insp_pz.txt"),
+                     "Pz KC inspired nkp225":os.path.join(repo_root,"parameters/interlayer_correction/KC_insp_pz.txt_nkp225")
                     }
         if type(restart_file)==str:
             f = open(restart_file,'r')
@@ -92,18 +92,11 @@ class TEGT_Calc(Calculator):
         L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
         L.command("pair_coeff       * *   reg/dep/poly  "+os.path.join(self.output,self.option_to_file[self.model_dict["interlayer potential"]])+"   C C") # long-range 
         L.command("pair_coeff      * * rebo "+os.path.join(self.output,self.option_to_file[self.model_dict["intralayer potential"]])+" C C")
-        #L.command("pair_style rebo")
-        #L.command("pair_coeff * * CH_pz.rebo C C")
+
         ####################################################################
 
         L.command("timestep 0.00025")
-    
-        #L.command("compute 0 all pair reg/dep/poly")
-        #L.command("variable Evdw  equal c_0[1]")
-        #L.command("variable Erep  equal c_0[2]")
-    
         L.command("thermo 1")
-        #L.command("thermo_style   custom step pe ke etotal temp v_Erep v_Evdw")
         L.command("fix 1 all nve")
         return L
     
