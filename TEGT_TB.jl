@@ -6,8 +6,8 @@ using LinearAlgebra
 #include("Lammps_CorrPot.jl")
 include("lammps_io.jl")
 include("tb_parameters.jl")
-include("TB_UtilsTEST.jl")
-
+#include("TB_UtilsTEST.jl")
+include("TB_Utils.jl")
 function get_neighbor_list(positions, cell,cutoff_radius)
     num_particles = size(positions, 1)
     neighbor_list = Dict{Int, Array{Int}}()  # Dict to store neighbors
@@ -242,10 +242,10 @@ end
 
 function get_param_dict(params_str)
     if params_str=="popov"
-        params = Dict("B"=>Dict("B"=>Dict("hopping"=>hoppingIntra,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7), 
-                         "Ti"=>Dict("hopping"=>hoppingInter,"ovrlp"=>overlapInter,"rcut"=>5.29)),
-              "Ti"=>Dict("B"=>Dict("hopping"=>hoppingInter,"ovrlp"=>overlapInter,"rcut"=>5.29), 
-                         "Ti"=>Dict("hopping"=>hoppingIntra,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7) ))
+        params = Dict("B"=>Dict("B"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7), 
+                         "Ti"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29)),
+              "Ti"=>Dict("B"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29), 
+                         "Ti"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7) ))
 
     else #params_str=="nn"
         params = Dict("B"=>Dict("B"=>Dict("hopping"=>nnhop,"ovrlp"=>overlapIntra,"self_energy"=>0,"rcut"=>3), 
