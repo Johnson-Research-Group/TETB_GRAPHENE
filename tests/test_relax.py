@@ -5,7 +5,7 @@ Created on Mon Sep 11 16:46:47 2023
 @author: danpa
 """
 
-import TEGT_calc
+from TEGT import TEGT_calc
 from ase import Atoms
 from ase.optimize import FIRE
 import flatgraphene as fg
