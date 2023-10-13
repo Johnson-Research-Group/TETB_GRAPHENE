@@ -3,11 +3,9 @@ using Plots
 using Distributed
 using LinearAlgebra
 
-#include("Lammps_CorrPot.jl")
-include("lammps_io.jl")
 include("tb_parameters.jl")
-#include("TB_UtilsTEST.jl")
 include("TB_Utils.jl")
+
 function get_neighbor_list(positions, cell,cutoff_radius)
     num_particles = size(positions, 1)
     neighbor_list = Dict{Int, Array{Int}}()  # Dict to store neighbors
@@ -120,45 +118,7 @@ function generate_monkhorst_pack_grid(nkx::Int, nky::Int, nkz::Int)
     return kpoints
 end
 
-#=
-function diagH(Ham,Overlap)
-
-    # Define the problem type (1 or 2)
-    itype = 1
-
-    # Specify whether eigenvectors should be computed
-    jobz = 'V'  # 'V' for eigenvectors, 'N' for eigenvalues only
-
-    # Specify whether the upper or lower triangle of A and B is stored
-    uplo = 'U'  # 'U' for upper, 'L' for lower
-
-    # Define the order of the matrices
-    n = 3
-    # Create arrays to store eigenvalues and eigenvectors
-    w = zeros(n)
-    z = zeros(Complex{Float64}, n, n)
-
-    # Define workspace and info variables
-    lwork = 3 * n  # Adjust the workspace size as needed
-    work = zeros(Complex{Float64}, lwork)
-    info = Ref{Int}(0)
-
-    # Call zhegv
-    @assert LAPACK.zhegv(itype, jobz, uplo, n, A, n, B, n, w, work, lwork, info) == 0
-
-    # Check if zhegv was successful
-    if info[] != 0
-        throw(LinearAlgebra.LinAlgException("zhegv failed with info = $(info[])"))
-    end
-    # Eigenvalues are in `w`, and eigenvectors are in `z` if jobz == 'V'
-    sorted_indices = sortperm(w)
-    eigenvalues = w[sorted_indices]
-    eigenvectors = z[:, sorted_indices]
-    return eigenvalues,eigenvectors #eigvals,eigvecs
-end
-=#
-
-function JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params_str,device_num,device_type,rcut = 10)
+function JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params,device_num,device_type,rcut = 10)
     params = get_param_dict(params_str)
     recip_cell = get_recip_cell(cell)
     if size(kpoints) == (3,)
@@ -166,20 +126,17 @@ function JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,param
     end
     kpoints = kpoints * recip_cell
     nkp = size(kpoints)[1]
-    #neighbor_list = get_neighbor_list(atom_positions,cell,rcut)
+    neighbor_list = get_neighbor_list(atom_positions,cell,rcut)
     natoms = size(atom_positions)[1]
     Energy = 0
     Forces = zeros(ComplexF64,natoms,3)
     for k in 1:nkp
-        #Ham,Overlap = gen_ham_ovrlp(atom_positions, neighbor_list,
-        #    atom_types,cell, kpoints[k,begin:end],params)
-        kpoint  = kpoints[k,:]
-        Ham = gen_ham(atom_positions,atom_types,cell,kpoint,params_str)
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, neighbor_list,
+            atom_types,cell, kpoints[k,begin:end],params)
         eigvalues,eigvectors = diagH(Ham,device_type,device_num)
         nocc = trunc(Int,natoms/2)
         Energy += 2*sum(eigvalues[begin:nocc])
-        #Forces += get_hellman_feynman(atom_positions,neighbor_list,atom_types,cell, eigvectors,kpoints[k,:],params)
-        Forces += get_hellman_feynman(atom_positions,atom_types,cell,eigvectors,kpoints[k,:],params_str)
+        Forces += get_hellman_feynman(atom_positions,neighbor_list,atom_types,cell, eigvectors,kpoints[k,:],params)
         
     end
  
@@ -196,20 +153,18 @@ function JULIA_get_tb_forces_energy_fd(atom_positions,atom_types,cell,kpoints,pa
     end
     kpoints = kpoints * recip_cell
     nkp = size(kpoints)[1]
-    #neighbor_list = get_neighbor_list(atom_positions,cell,rcut)
+    neighbor_list = get_neighbor_list(atom_positions,cell,rcut)
     natoms = size(atom_positions)[1]
     Energy = 0
     Forces = zeros(ComplexF64,natoms,3)
     for k in 1:nkp
-        #Ham,Overlap = gen_ham_ovrlp(atom_positions, neighbor_list,
-        #    atom_types,cell, kpoints[k,begin:end],params)
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, neighbor_list,
+            atom_types,cell, kpoints[k,begin:end],params)
         kpoint  = kpoints[k,:]
-        Ham = gen_ham(atom_positions,atom_types,cell,kpoint,params_str)
         eigvalues,eigvectors = diagH(Ham,device_type,device_num)
         nocc = trunc(Int,natoms/2)
         Energy += 2*sum(eigvalues[begin:nocc])
-        #Forces += get_hellman_feynman_fd(atom_positions,neighbor_list,atom_types,cell, eigvectors,kpoints[k,:],params)
-        Forces += get_hellman_feynman_fd(atom_positions,atom_types,cell,eigvec,kpoints[k,:],params_str)
+        Forces += get_hellman_feynman_fd(atom_positions,neighbor_list,atom_types,cell, eigvectors,kpoints[k,:],params)
         
     end
  
@@ -223,16 +178,14 @@ function JULIA_get_band_structure(atom_positions,atom_types,cell,kpoints,params_
         kpoints = reshape(kpoints, 1, 3)
     end
     kpoints = kpoints * recip_cell
-    #neighbor_list = get_neighbor_list(atom_positions,cell,rcut)
+    neighbor_list = get_neighbor_list(atom_positions,cell,rcut)
     natoms = size(atom_positions)[1]
     nkp = size(kpoints)[1]
     evals = zeros(natoms,nkp)
     evecs = zeros(Complex{Float64},natoms,natoms,nkp)
     for k in 1:nkp
-        #Ham,Overlap = gen_ham_ovrlp(atom_positions, neighbor_list,
-        #    atom_types,cell, kpoints[k,:],params)
-        kpoint  = kpoints[k,:]
-        Ham = gen_ham(atom_positions,atom_types,cell,kpoint,params_str)
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, neighbor_list,
+            atom_types,cell, kpoints[k,:],params)
         eigvalues,eigvectors = diagH(Ham,device_type,device_num)
         evals[:,k] = eigvalues
         evecs[:,:,k] = eigvectors

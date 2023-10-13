@@ -103,9 +103,8 @@ function get_helem_fxn(r2,cell,typei,typen,params,kpoint)
 	    dist = norm(disp)
         #just in case neighbor list cutoff is larger than hopping cutoff
         if dist < params[typei][typen]["rcut"] && dist > 0.5
-            #phase = cos(dot(kpoint,disp))
             hop = params[typei][typen]["hopping"](disp)
-            return hop #.* phase
+            return hop
         else
             return 0
         end
@@ -179,7 +178,7 @@ function get_hellman_feynman(atom_positions,neighbor_list,atom_types,
             dist = norm(disp)
             phase = exp(1im*dot(kpoint,disp))
             # *2 for doubly occupied states
-	        ave_gradH = 4 .* gradH  .* rho .* phase #sqrt(rho .* phase .* conj(rho .* phase)) # .* abs.(disp./dist)
+	        ave_gradH = 4 .* gradH  .* rho .* phase
             Force[i,1] -= ave_gradH[1] 
             Force[i,2] -= ave_gradH[2] 
             Force[i,3] -= ave_gradH[3] 
