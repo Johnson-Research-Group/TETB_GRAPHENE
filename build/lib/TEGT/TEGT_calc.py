@@ -39,16 +39,16 @@ class TEGT_Calc(Calculator):
         self.model_dict=model_dict
         self.device_num = device_num
         self.device_type = device_type
-        repo_root = "/".join(TEGT.__file__.split("/")[:-1])
+        self.repo_root = os.path.join("/".join(TEGT.__file__.split("/")[:-1]),"parameters")
         self.option_to_file={
-                     "Rebo":os.path.join(repo_root,"parameters/intralayer_correction/CH.rebo"),
-                     "Pz pairwise":os.path.join(repo_root,"parameters/intralayer_correction/pz_pairwise_correction.table"),
-                     "Pz rebo":os.path.join(repo_root,"parameters/intralayer_correction/CH_pz.rebo"),
-                     "Pz rebo nkp225":os.path.join(repo_root,"parameters/intralayer_correction/CH_pz.rebo_nkp225"),
-                     "kolmogorov crespi":os.path.join(repo_root,"parameters/interlayer_correction/fullKC.txt"),
-                     "KC inspired":os.path.join(repo_root,"parameters/interlayer_correction/KC_insp.txt"),
-                     "Pz KC inspired":os.path.join(repo_root,"parameters/interlayer_correction/KC_insp_pz.txt"),
-                     "Pz KC inspired nkp225":os.path.join(repo_root,"parameters/interlayer_correction/KC_insp_pz.txt_nkp225")
+                     "Rebo":"CH.rebo",
+                     "Pz pairwise":"pz_pairwise_correction.table",
+                     "Pz rebo":"CH_pz.rebo",
+                     "Pz rebo nkp225":"CH_pz.rebo_nkp225",
+                     "kolmogorov crespi":"fullKC.txt",
+                     "KC inspired":"KC_insp.txt",
+                     "Pz KC inspired":"KC_insp_pz.txt",
+                     "Pz KC inspired nkp225":"KC_insp_pz.txt_nkp225"
                     }
         if type(restart_file)==str:
             f = open(restart_file,'r')
@@ -60,16 +60,13 @@ class TEGT_Calc(Calculator):
 
         else:
             self.create_model(self.model_dict)
-        self.forces=None
-        self.potential_energy=None
-        self.optimizer_type = 'LAMMPS'
+        
         self.kpoints = self.k_uniform_mesh(self.model_dict['kmesh'])
         self.nkp = np.shape(self.kpoints)[0]
         self.pylammps_started = False
-        
-        
-        
+         
     def init_pylammps(self,atoms):
+        ntypes = len(set(atoms.get_chemical_symbols()))
         data_file = os.path.join(self.output,"tegt.data")
         ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
         L = PyLammps()
@@ -79,21 +76,25 @@ class TEGT_Calc(Calculator):
         L.command("box tilt large")
     
         L.command(" read_data "+data_file)
+
         L.command("group top type 1")
-        L.command("group bottom type 2")
-    
         L.command("mass 1 12.0100")
-        L.command("mass 2 12.0100")
+            
+        if ntypes ==2:
+           L.command("group bottom type 2")
+           L.command("mass 2 12.0100")
     
         L.command("velocity	all create 0.0 87287 loop geom")
         # Interaction potential for carbon atoms
         ######################## Potential defition ########################
     
-        L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
-        #L.command("pair_coeff       * *   reg/dep/poly  "+os.path.join(self.output,self.option_to_file[self.model_dict["interlayer potential"]])+"   C C") # long-range 
-        L.command("pair_coeff * * reg/dep/poly "+os.path.join(self.output,"KC_insp_pz.txt C C"))
-        #L.command("pair_coeff      * * rebo "+os.path.join(self.output,self.option_to_file[self.model_dict["intralayer potential"]])+" C C")
-        L.command("pair_coeff * * rebo "+os.path.join(self.output,"CH_pz.rebo C C"))
+        if ntypes ==2:
+            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
+            L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
+            L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
+        else:
+            L.command("pair_style       rebo")
+            L.command("pair_coeff      * * "+self.rebo_file+" C")
 
         ####################################################################
 
@@ -186,30 +187,30 @@ class TEGT_Calc(Calculator):
 
         return evals,evecs
         
-    def calculate(self, atoms, properties=['energy','forces','potential_energy'],
+    def calculate(self, atoms, properties=None,
                   system_changes=all_changes):
+        if properties is None:
+            properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
 
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-        size = comm.Get_size()
-        if rank == 0:
-            self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
-        else:
-            #run lammps part first then run latte part. Sum the two
-            if self.use_tb:
-                self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
-                self.results['forces'] = self.Lammps_forces + self.tb_forces
-                self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
-                self.results['energy'] = self.Lammps_tot_energy + self.tb_Energy
 
-            else:
-                self.results['forces'] = self.Lammps_forces
-                self.results['potential_energy'] = self.Lammps_potential_energy
-                self.results['energy'] = self.Lammps_tot_energy
+        #if MPI.COMM_WORLD.rank == 0:
+        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
+        #else:
+        self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
+        #run lammps part first then run latte part. Sum the two
+        if self.use_tb:
+            self.results['forces'] = self.Lammps_forces + self.tb_forces 
+            self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
+            self.results['energy'] = self.Lammps_tot_energy + self.tb_Energy
+
+        else:
+            self.results['forces'] = self.Lammps_forces
+            self.results['potential_energy'] = self.Lammps_potential_energy
+            self.results['energy'] = self.Lammps_tot_energy
                 
-                #atoms.calc.forces = self.forces
-                #atoms.calc.potential_energy = self.potential_energy
+            #atoms.calc.forces = self.forces
+            #atoms.calc.potential_energy = self.potential_energy
         
     def run(self,atoms):
         self.calculate(atoms)
@@ -228,7 +229,7 @@ class TEGT_Calc(Calculator):
              "intralayer potential":None,
              "interlayer potential":None,
              "kmesh":(1,1,1),
-             "output":"",
+             "output":".",
              } 
         orbs_basis = {"s,px,py,pz":4,"pz":1}
         for k in input_dict.keys():
@@ -250,12 +251,19 @@ class TEGT_Calc(Calculator):
                     self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp225'
         
         self.output = self.model_dict["output"]
-        if self.output!="":
+        if self.output!=".":
             if not os.path.exists(self.output):
                 os.mkdir(self.output)
-        subprocess.call("cp "+self.option_to_file[self.model_dict["interlayer potential"]]+" "+self.output,shell=True)
-        subprocess.call("cp "+self.option_to_file[self.model_dict["intralayer potential"]]+" "+self.output,shell=True)
-            
+            #call parameter files from a specified directory, necessary for fitting
+            subprocess.call("cp "+os.path.join(self.repo_root,self.option_to_file[self.model_dict["interlayer potential"]])+" "+self.output,shell=True)
+            subprocess.call("cp "+os.path.join(self.repo_root,self.option_to_file[self.model_dict["intralayer potential"]])+" "+self.output,shell=True)
+            self.rebo_file = os.path.join(self.output,self.option_to_file[self.model_dict["intralayer potential"]])
+            self.kc_file = os.path.join(self.output,self.option_to_file[self.model_dict["interlayer potential"]])
+        else:
+            #call parameter files from installed repo directory
+            self.rebo_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["intralayer potential"]])
+            self.kc_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["interlayer potential"]])
+                    
         
     def k_uniform_mesh(self,mesh_size):
         r""" 

@@ -16,19 +16,19 @@ Finding 1-2 1-3 1-4 neighbors ...
      0 = max # of 1-3 neighbors
      0 = max # of 1-4 neighbors
      1 = max # of special neighbors
-  special bonds CPU = 0.001 seconds
-  read_data CPU = 0.003 seconds
+  special bonds CPU = 0.000 seconds
+  read_data CPU = 0.002 seconds
 group top type 1
 14 atoms in group top
+mass 1 12.0100
 group bottom type 2
 14 atoms in group bottom
-mass 1 12.0100
 mass 2 12.0100
 velocity	all create 0.0 87287 loop geom
 pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo
-pair_coeff * * reg/dep/poly theta_21_78/KC_insp_pz.txt C C
-pair_coeff * * rebo theta_21_78/CH_pz.rebo C C
-Reading rebo potential file theta_21_78/CH_pz.rebo with DATE: 2018-7-3
+pair_coeff       * *   reg/dep/poly  theta_21_78/KC_insp_pz.txt_nkp225   C C
+pair_coeff      * * rebo theta_21_78/CH_pz.rebo_nkp225 C C
+Reading rebo potential file theta_21_78/CH_pz.rebo_nkp225 with DATE: 2018-7-3
 timestep 0.00025
 thermo 1
 fix 1 all nve
@@ -63,10 +63,10 @@ Neighbor list info ...
       bin: standard
 Per MPI rank memory allocation (min/avg/max) = 6.745 | 6.745 | 6.745 Mbytes
    Step          Temp          E_pair         E_mol          TotEng         Press     
-         0   0              2.2867898      0              2.2867898      65462.664    
-Loop time of 4.288e-06 on 1 procs for 0 steps with 28 atoms
+         0   0             -3953.7713      0             -3953.7713     -1547980.5    
+Loop time of 4.779e-06 on 1 procs for 0 steps with 28 atoms
 
-1935.6% CPU use with 1 MPI tasks x no OpenMP threads
+1569.4% CPU use with 1 MPI tasks x no OpenMP threads
 
 MPI task timing breakdown:
 Section |  min time  |  avg time  |  max time  |%varavg| %total
@@ -77,7 +77,7 @@ Neigh   | 0          | 0          | 0          |   0.0 |  0.00
 Comm    | 0          | 0          | 0          |   0.0 |  0.00
 Output  | 0          | 0          | 0          |   0.0 |  0.00
 Modify  | 0          | 0          | 0          |   0.0 |  0.00
-Other   |            | 4.288e-06  |            |       |100.00
+Other   |            | 4.779e-06  |            |       |100.00
 
 Nlocal:             28 ave          28 max          28 min
 Histogram: 1 0 0 0 0 0 0 0 0 0
@@ -94,7 +94,7 @@ Ave special neighs/atom = 0
 Neighbor list builds = 0
 Dangerous builds = 0
 print "$(pe)"
-2.2867898112042297498
+-3953.7713269808546102
 print "$(ke)"
 0
 info system

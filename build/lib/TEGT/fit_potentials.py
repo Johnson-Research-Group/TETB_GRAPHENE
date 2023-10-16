@@ -70,18 +70,18 @@ def get_bilayer_atoms(d,disregistry, a=2.46, c=20, sc=5,zshift='CM'):
     return atoms
 
 def get_monolayer_atoms(dx,dy,a=2.462):
-    atoms=fg.shift.make_layer("A","rect",4,4,a,7.0,"C",12.01,1)
+    atoms=fg.shift.make_layer("A","rect",4,4,a,7.0,"B",12.01,1)
     curr_cell=atoms.get_cell()
     curr_cell[-1,-1]=14
     atoms.set_cell(curr_cell)
     return ase.Atoms(atoms) 
     
-def write_kcinsp(params):
+def write_kcinsp(params,kc_file):
     params = params[:9]
     params = " ".join([str(x) for x in params])
     
     headers = '               '.join(['', "delta","C","C0 ","C2","C4","z0","A6","A8","A10"])
-    with open("KC_insp_pz.txt", 'w+') as f:
+    with open(kc_file, 'w+') as f:
         f.write("# Refined parameters for Kolmogorov-Crespi Potential with taper function\n\
                 #\n# "+headers+"         S     rcut\nC C "+params+" 1.0    2.0")
     
@@ -102,7 +102,7 @@ def check_keywords(string):
       
    return False,k
    
-def write_rebo(params):
+def write_rebo(params,rebo_file):
     """write rebo potential given list of parameters. assumed order is
     Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , Beta_CC1, Beta_CC2
     
@@ -111,7 +111,7 @@ def write_rebo(params):
     keywords = [ 'Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'Beta_CC1', 
               'Beta_CC2']
     param_dict=dict(zip(keywords,params))
-    with open("CH_pz.rebo", 'r') as f:
+    with open(rebo_file, 'r') as f:
         lines = f.readlines()
         new_lines=[]
         for i,l in enumerate(lines):
@@ -123,7 +123,7 @@ def write_rebo(params):
                 new_lines.append(nl)
             else:
                 new_lines.append(l)
-    with open("CH_pz.rebo", 'w') as f:        
+    with open(rebo_file, 'w') as f:        
         f.writelines(new_lines)
 
 class fit_potentials_tblg:
@@ -135,11 +135,11 @@ class fit_potentials_tblg:
         if self.potential=="rebo":
             self.write_potential = write_rebo
             self.output = "rebo"
-            self.potential_file = "CH_pz.rebo"
+            self.potential_file = self.calc.rebo_file
         elif self.potential=="KC inspired":
             self.write_potential = write_kcinsp
             self.output = "KCinsp"
-            self.potential_file = "KC_insp_pz.txt"
+            self.potential_file = self.calc.kc_file
         
     def objective(self,params):
         energy = []
@@ -148,7 +148,7 @@ class fit_potentials_tblg:
         for row in self.db.select():
     
             atoms = self.db.get_atoms(id = row.id)
-            self.write_potential(params[:-1])
+            self.write_potential(params[:-1],self.potential_file)
             atoms.calc = self.calc
             lammps_forces,lammps_pe,tote = self.calc.run_lammps(atoms)
             e = (lammps_pe)/len(atoms) + row.data.tb_energy + E0 #energy per atom
@@ -162,7 +162,7 @@ class fit_potentials_tblg:
         rms = np.linalg.norm(rms)
         wp = [str(p) for p in params]
         wp = " ".join(wp)
-        with open(self.output+"_rms.txt","a+") as f:
+        with open(os.path.join(self.calc.output,self.output+"_rms.txt"),"a+") as f:
             f.write(str(rms)+" "+wp+"\n")
         return rms
     
@@ -190,7 +190,7 @@ class fit_potentials_tblg:
             params = self.original_p0        
             popt = scipy.optimize.minimize(self.objective,params, method='Nelder-Mead')
 
-        self.write_potential(popt.x)
+        self.write_potential(popt.x,self.potential_file)
         subprocess.call("cp "+self.potential_file+" "+self.potential_file+"_final_version",shell=True)
         return popt
     
@@ -214,11 +214,12 @@ if __name__ == '__main__':
                           "kmesh":kmesh,
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
-                          'label':args.output})
+                          'output':args.output})
     
     calc_obj = TEGT_calc.TEGT_Calc(model_dict)
     nkp = str(int(np.prod(kmesh)))
-    if args.gendata==bool(True) and args.type=="interlayer":
+    if args.gendata=="True" and args.type=="interlayer":
+        print("assembling interlayer database")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         df = pd.read_csv('../data/qmc.csv')
         for i, row in df.iterrows():
@@ -227,7 +228,8 @@ if __name__ == '__main__':
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             db.write(atoms,data={"total_energy":row["energy"],'tb_energy':tb_energy/len(atoms)})
 
-    if args.type=="interlayer" and bool(args.fit):      
+    if args.type=="interlayer" and args.fit=="True":
+        print("fitting interlayer potential")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         E0 = -154
         p0= [4.728912880179687, 32.40993806452906, -20.42597835994438,
@@ -238,26 +240,34 @@ if __name__ == '__main__':
         pfinal = fitting_obj.fit(p0)
         print(pfinal.x)
 
-    if args.gendata==bool(True) and args.type=="intralayer":   
-        db = ase.db.connect('../data/monoayer_nkp'+nkp+'.db')
-        file_list = glob.glob("../../tBLG_DFT/calc*",recursive=True)
+    if args.gendata=="True" and args.type=="intralayer":  
+        print("assembling intralayer database")
+        db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
+        file_list = glob.glob("../../tBLG_DFT/grapheneCalc*",recursive=True)
         for f in file_list:
-            atoms = ase.io.read(os.path.join(f,"log"),format="espresso")
-            total_energy = atoms.get_potential_energy()
+            print(os.path.join(f,"log"))
+            atoms = ase.io.read(os.path.join(f,"log"),format="espresso-out")
+            try:
+                total_energy = atoms.get_total_energy()
+            except:
+                print("DFT failed")
+                continue
+            atoms.symbols = atoms.get_global_number_of_atoms() * "B"
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             db.write(atoms,data={"total_energy":total_energy/len(atoms),'tb_forces':tb_forces,'tb_energy':tb_energy/len(atoms)})
 
-    if args.type=="intralayer" and bool(args.fit):
+    if args.type=="intralayer" and args.fit=="True":
+        print("fitting intralayer potential")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
         p0 = [0.4787439526021916 ,4.763581262711529,10493.065144313845,11193.716433093443,
               -4.082242700692129,4.59957491269822, 0.07885385443664605,E0]
         potential = "rebo"
-        fitting_obj = fit_potentials_tblg(calc_obj, db, potential,fit_forces=True)
+        fitting_obj = fit_potentials_tblg(calc_obj, db, potential,fit_forces=False)
         pfinal = fitting_obj.fit(p0)
         print(pfinal.x)
 
-    if args.type=="interlayer" and bool(args.test):    
+    if args.type=="interlayer" and args.test=="True":    
         stacking_ = ["AB","SP","Mid","AA"]
         disreg_ = [0 , 0.16667, 0.5, 0.66667]
         colors = ["blue","red","black","green"]
@@ -296,7 +306,7 @@ if __name__ == '__main__':
         plt.savefig("kc_insp_test.png")
         plt.show()
         
-    if args.type=="intralayer" and bool(args.test):
+    if args.type=="intralayer" and args.test=="True":
         a = 2.462
         n=10
         lat_con_list = np.linspace((1-0.005)*a,(1.005)*a,n)
