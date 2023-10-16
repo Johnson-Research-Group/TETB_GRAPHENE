@@ -1,0 +1,11 @@
+setup.py
+TEGT/TEGT_calc.py
+TEGT/__init__.py
+TEGT/fit_potentials.py
+TEGT/submit_fit_potential.py
+TEGT.egg-info/PKG-INFO
+TEGT.egg-info/SOURCES.txt
+TEGT.egg-info/dependency_links.txt
+TEGT.egg-info/top_level.txt
+TEGT/parameters/__init__.py
+tests/test_relax.py

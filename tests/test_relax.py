@@ -87,18 +87,18 @@ if __name__=="__main__":
     test_tbforces=False
     test_tbenergy=False
     test_lammps=False
-    test_bands=True
-    test_relaxation=False
+    test_bands=False
+    test_relaxation=True
     test_scaling=False
     theta = 21.78
     
     
     model_dict = dict({"tight binding parameters":"popov", 
                           "basis":"pz",
-                          "kmesh":(1,1,1),
+                          "kmesh":(2,2,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
-                          'output':str(theta)})
+                          'output':"theta_21_78"})
     
     calc_obj = TEGT_calc.TEGT_Calc(model_dict)
     
