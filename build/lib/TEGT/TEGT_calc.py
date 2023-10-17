@@ -67,6 +67,7 @@ class TEGT_Calc(Calculator):
          
     def init_pylammps(self,atoms):
         ntypes = len(set(atoms.get_chemical_symbols()))
+        print(ntypes)
         data_file = os.path.join(self.output,"tegt.data")
         ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
         L = PyLammps()

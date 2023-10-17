@@ -1,0 +1,35 @@
+units		metal
+atom_style	full
+atom_modify    sort 0 0.0  # This is to avoid sorting the coordinates
+box tilt large
+
+read_data tegt.data
+group top type 1
+group bottom type 2
+
+mass 1 12.0100
+mass 2 12.0200
+
+velocity	all create 0.0 87287 loop geom
+#potential for carbon atoms
+########## Potential defition ########################
+
+pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo
+#pair_style rebo 
+pair_coeff       * *   reg/dep/poly  KC_insp_pz.txt_nkp225   C C # long-range 
+pair_coeff      * * rebo CH_pz.rebo_nkp225 C C
+######################################################
+
+#neighbor	2.0 bin
+#neigh_modify	delay 0 one 10000
+#delete_atoms overlap 0.4 all all
+timestep 0.00025
+
+#compute 0 all pair reg/dep/poly
+#variable Evdw  equal c_0[1]
+#variable Erep  equal c_0[2]
+
+thermo 1
+thermo_style   custom step pe ke etotal temp #v_Erep v_Evdw
+fix 1 all nve
+run 0

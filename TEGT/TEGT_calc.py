@@ -75,7 +75,7 @@ class TEGT_Calc(Calculator):
         L.command("atom_modify    sort 0 0.0")  # This is to avoid sorting the coordinates
         L.command("box tilt large")
     
-        L.command(" read_data "+data_file)
+        L.command("read_data "+data_file)
 
         L.command("group top type 1")
         L.command("mass 1 12.0100")
@@ -87,7 +87,7 @@ class TEGT_Calc(Calculator):
         L.command("velocity	all create 0.0 87287 loop geom")
         # Interaction potential for carbon atoms
         ######################## Potential defition ########################
-    
+        
         if ntypes ==2:
             L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
@@ -193,11 +193,10 @@ class TEGT_Calc(Calculator):
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
 
-
-        #if MPI.COMM_WORLD.rank == 0:
-        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #else:
         self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
+        #if MPI.COMM_WORLD.rank == 0:
+        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #run lammps part first then run latte part. Sum the two
         if self.use_tb:
             self.results['forces'] = self.Lammps_forces + self.tb_forces 

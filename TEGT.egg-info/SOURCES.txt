@@ -7,5 +7,4 @@ TEGT.egg-info/PKG-INFO
 TEGT.egg-info/SOURCES.txt
 TEGT.egg-info/dependency_links.txt
 TEGT.egg-info/top_level.txt
-TEGT/parameters/__init__.py
 tests/test_relax.py
