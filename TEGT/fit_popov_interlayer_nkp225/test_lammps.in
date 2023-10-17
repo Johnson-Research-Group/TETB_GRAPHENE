@@ -8,7 +8,7 @@ group top type 1
 group bottom type 2
 
 mass 1 12.0100
-mass 2 12.0200
+mass 2 12.0100
 
 velocity	all create 0.0 87287 loop geom
 #potential for carbon atoms
@@ -16,8 +16,8 @@ velocity	all create 0.0 87287 loop geom
 
 pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo
 #pair_style rebo 
-pair_coeff       * *   reg/dep/poly  KC_insp_pz.txt_nkp225   C C # long-range 
 pair_coeff      * * rebo CH_pz.rebo_nkp225 C C
+pair_coeff       * *   reg/dep/poly  KC_insp_pz.txt_nkp225   C C # long-range 
 ######################################################
 
 #neighbor	2.0 bin
@@ -32,4 +32,4 @@ timestep 0.00025
 thermo 1
 thermo_style   custom step pe ke etotal temp #v_Erep v_Evdw
 fix 1 all nve
-run 0
+run 10
