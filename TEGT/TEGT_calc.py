@@ -140,7 +140,7 @@ class TEGT_Calc(Calculator):
         ke = self.L.eval("ke")
         for i in range(atoms.get_global_number_of_atoms()):
             forces[i,:] = self.L.atoms[i].force
-        self.L.close()
+        del self.L
         return forces,pe,pe+ke
     
     def get_tb_fxn(self,positions,atom_types,cell,kpoints,tbparams,calc_type="force"):

@@ -207,18 +207,21 @@ if __name__ == '__main__':
     args = parser.parse_args() 
     if args.output==None:
         args.output = "fit_"+args.tbmodel+"_"+args.type+"_nkp"+args.nkp
+    
     kd = np.sqrt(int(args.nkp))
     kmesh = (kd,kd,1)
-    model_dict = dict({"tight binding parameters":args.tbmodel, 
-                          "basis":"pz",
-                          "kmesh":kmesh,
-                          "intralayer potential":"Pz rebo",
-                          "interlayer potential":"Pz KC inspired",
-                          'output':args.output})
-    
-    calc_obj = TEGT_calc.TEGT_Calc(model_dict)
     nkp = str(int(np.prod(kmesh)))
+
+    model_dict = dict({"tight binding parameters":args.tbmodel,
+                        "basis":"pz",
+                        "kmesh":kmesh,
+                        "intralayer potential":"Pz rebo",
+                        "interlayer potential":"Pz KC inspired",
+                        'output':args.output})
     if args.gendata=="True" and args.type=="interlayer":
+   
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+
         print("assembling interlayer database")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         df = pd.read_csv('../data/qmc.csv')
@@ -229,6 +232,7 @@ if __name__ == '__main__':
             db.write(atoms,data={"total_energy":row["energy"],'tb_energy':tb_energy/len(atoms)})
 
     if args.type=="interlayer" and args.fit=="True":
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
         print("fitting interlayer potential")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         E0 = -154
@@ -241,6 +245,7 @@ if __name__ == '__main__':
         print(pfinal.x)
 
     if args.gendata=="True" and args.type=="intralayer":  
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
         print("assembling intralayer database")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         file_list = glob.glob("../../tBLG_DFT/grapheneCalc*",recursive=True)
@@ -257,6 +262,7 @@ if __name__ == '__main__':
             db.write(atoms,data={"total_energy":total_energy/len(atoms),'tb_forces':tb_forces,'tb_energy':tb_energy/len(atoms)})
 
     if args.type=="intralayer" and args.fit=="True":
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
         print("fitting intralayer potential")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
@@ -267,7 +273,15 @@ if __name__ == '__main__':
         pfinal = fitting_obj.fit(p0)
         print(pfinal.x)
 
-    if args.type=="interlayer" and args.test=="True":    
+    if args.type=="interlayer" and args.test=="True":   
+        model_dict = dict({"tight binding parameters":args.tbmodel,
+                          "basis":"pz",
+                          "kmesh":kmesh,
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
+                          'output':args.output})
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+
         stacking_ = ["AB","SP","Mid","AA"]
         disreg_ = [0 , 0.16667, 0.5, 0.66667]
         colors = ["blue","red","black","green"]
@@ -307,11 +321,20 @@ if __name__ == '__main__':
         plt.show()
         
     if args.type=="intralayer" and args.test=="True":
+        model_dict = dict({"tight binding parameters":args.tbmodel,
+                          "basis":"pz",
+                          "kmesh":kmesh,
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
+                          'output':args.output})
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+
         a = 2.462
         n=10
-        lat_con_list = np.linspace((1-0.005)*a,(1.005)*a,n)
+        lat_con_list = np.linspace((1-0.1)*a,(1.1)*a,n)
         lat_con_energy = np.zeros(n)
         for i,lat_con in enumerate(lat_con_list):
+            print("a = ",lat_con)
             atoms = get_monolayer_atoms(0,0,a=lat_con)
             atoms.calc = calc_obj
             total_energy = atoms.get_potential_energy()/len(atoms)

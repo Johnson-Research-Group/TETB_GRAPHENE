@@ -35,6 +35,24 @@ class TEGT_Calc(Calculator):
     
     implemented_properties = ['energy','forces','potential_energy']
     def __init__(self,model_dict=None,restart_file=None, device_num=1,device_type="cpu",**kwargs):
+        """
+        ase calculator object that calculates total energies and forces given a 
+        total energy tight binding model. can specify number of kpoints to be either 1 or 225, 
+        or tight binding model.
+        Parameters:
+        :param model_dict: (dict) dictionary containing info on tb model, number of kpoints, interatomic corrective potentials
+                            defaults: {"tight binding parameters":None, (str) tight binding model
+                                        "intralayer potential":None, (str) can be path to REBO potential file or keyword
+                                        "interlayer potential":None, (str) can be path to interlayer potential file or keyword
+                                        "kmesh":(1,1,1), (tuple) mesh of kpoints
+                                        "output":".", (str) optional output directory
+                                        } 
+
+        intralayer potential keywords = {REBO, Pz rebo, Pz rebo nkp225}
+        interlayer potential keywords = {kolmogorov crespi, KC inspired, Pz KC inspired, Pz KC inspired nkp225}
+
+        create_model() will automatically select correct potential given the input tight binding model and number of kpoints
+        """
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
         self.device_num = device_num
@@ -66,8 +84,9 @@ class TEGT_Calc(Calculator):
         self.pylammps_started = False
          
     def init_pylammps(self,atoms):
+        """ create pylammps object and calculate corrective potential energy 
+        """
         ntypes = len(set(atoms.get_chemical_symbols()))
-        print(ntypes)
         data_file = os.path.join(self.output,"tegt.data")
         ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
         L = PyLammps()
@@ -76,7 +95,7 @@ class TEGT_Calc(Calculator):
         L.command("atom_modify    sort 0 0.0")  # This is to avoid sorting the coordinates
         L.command("box tilt large")
     
-        L.command(" read_data "+data_file)
+        L.command("read_data "+data_file)
 
         L.command("group top type 1")
         L.command("mass 1 12.0100")
@@ -88,7 +107,7 @@ class TEGT_Calc(Calculator):
         L.command("velocity	all create 0.0 87287 loop geom")
         # Interaction potential for carbon atoms
         ######################## Potential defition ########################
-    
+        
         if ntypes ==2:
             L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
@@ -105,6 +124,8 @@ class TEGT_Calc(Calculator):
         return L
     
     def run_lammps(self,atoms):
+        """ evaluate corrective potential energy, forces in lammps 
+        """
         #update atom positions in lammps object, need to make sure pylammps object is only initialized on rank 0 so I don't have to keep writing data files
         #if not self.pylammps_started:
         self.L = self.init_pylammps(atoms)
@@ -157,6 +178,8 @@ class TEGT_Calc(Calculator):
         return func
     
     def run_tight_binding(self,atoms,force_type="force"):
+        """ get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)
+        """
         #have julia calculate energies/forces at individual kpoints, let python do parallelization
         tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),self.kpoints,
                                                    self.model_dict["tight binding parameters"],calc_type=force_type)
@@ -194,11 +217,10 @@ class TEGT_Calc(Calculator):
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
 
-
-        #if MPI.COMM_WORLD.rank == 0:
-        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #else:
         self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
+        #if MPI.COMM_WORLD.rank == 0:
+        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #run lammps part first then run latte part. Sum the two
         if self.use_tb:
             self.results['forces'] = self.Lammps_forces + self.tb_forces 
@@ -241,8 +263,28 @@ class TEGT_Calc(Calculator):
             use_tb=False
         else:
             use_tb=True
-
         self.use_tb = use_tb
+
+        if self.model_dict["intralayer potential"] not in self.option_to_file.keys():
+            #can give file path to potential file in dictionary
+            if os.path.exists(self.model_dict["intralayer potential"]):
+                self.rebo_file = self.model_dict["intralayer potential"]
+            else:
+                print("rebo potential file does not exist")
+                exit()
+        else:
+            self.rebo_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["intralayer potential"]])
+
+        if self.model_dict["interlayer potential"] not in self.option_to_file.keys():
+            #can give file path to potential file in dictionary
+            if os.path.exists(self.model_dict["interlayer potential"]):
+                self.kc_file = self.model_dict["interlayer potential"]
+            else:
+                print("interlayer potential file does not exist")
+                exit()
+        else:
+            self.kc_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["interlayer potential"]])
+
         if np.prod(self.model_dict['kmesh'])>1:
             if self.model_dict["intralayer potential"]:
                 if self.model_dict["intralayer potential"].split(" ")[-1]!='nkp225':
@@ -256,16 +298,11 @@ class TEGT_Calc(Calculator):
             if not os.path.exists(self.output):
                 os.mkdir(self.output)
             #call parameter files from a specified directory, necessary for fitting
-            subprocess.call("cp "+os.path.join(self.repo_root,self.option_to_file[self.model_dict["interlayer potential"]])+" "+self.output,shell=True)
-            subprocess.call("cp "+os.path.join(self.repo_root,self.option_to_file[self.model_dict["intralayer potential"]])+" "+self.output,shell=True)
-            self.rebo_file = os.path.join(self.output,self.option_to_file[self.model_dict["intralayer potential"]])
-            self.kc_file = os.path.join(self.output,self.option_to_file[self.model_dict["interlayer potential"]])
-        else:
-            #call parameter files from installed repo directory
-            self.rebo_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["intralayer potential"]])
-            self.kc_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["interlayer potential"]])
+            subprocess.call("cp "+self.rebo_file+" "+self.output,shell=True)
+            subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
+            self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
+            self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
                     
-        
     def k_uniform_mesh(self,mesh_size):
         r""" 
         Returns a uniform grid of k-points that can be passed to
@@ -281,16 +318,6 @@ class TEGT_Calc(Calculator):
         :returns:
 
           * **k_vec** -- Array of k-vectors on the mesh that can be
-            directly passed to function  :func:`pythtb.tb_model.solve_all`.
-
-        Example usage::
-          
-          # returns a 10x20x30 mesh of a tight binding model
-          # with three periodic directions
-          k_vec = my_model.k_uniform_mesh([10,20,30])
-          # solve model on the uniform mesh
-          my_model.solve_all(k_vec)
-        
         """
          
         # get the mesh size and checks for consistency
@@ -356,18 +383,6 @@ class TEGT_Calc(Calculator):
             node on the path in Cartesian coordinates.  This array is
             typically used to plot nodes (typically special points) on
             the path in k-space.
-    
-        Example usage::
-    
-          # Construct a path connecting four nodal points in k-space
-          # Path will contain 401 k-points, roughly equally spaced
-          path = [[0.0, 0.0], [0.0, 0.5], [0.5, 0.5], [0.0, 0.0]]
-          (k_vec,k_dist,k_node) = my_model.k_path(path,401)
-          # solve for eigenvalues on that path
-          evals = tb.solve_all(k_vec)
-          # then use evals, k_dist, and k_node to plot bandstructure
-          # (see examples)
-        
         """
     
         k_list=np.array(sym_pts)
