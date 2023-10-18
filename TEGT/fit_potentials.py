@@ -21,6 +21,7 @@ import glob
 #import mlflow
 from ase.build import make_supercell
 from scipy.optimize import curve_fit
+from scipy.spatial import distance
 
 def quadratic_function(x, a, b, c):
     return a * x**2 + b * x + c
@@ -374,9 +375,29 @@ if __name__ == '__main__':
         plt.plot(lat_con_list,tb_energy-tb_energy[fit_min_ind],label = "tight binding energy")
         plt.plot(lat_con_list,rebo_energy - rebo_energy[fit_min_ind],label="rebo corrective energy")
         plt.plot(lat_con_list, dft_energy-np.min(dft_energy),label="dft results")
-        plt.xlabel("lattice constant (angstroms)")
+        plt.xlabel("nearest neighbor distance (angstroms)")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.legend()
+        
+
+        db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
+        training_data_energy = []
+        training_data_nn_dist_ave = []
+        for row in db.select():
+
+            atoms = db.get_atoms(id = row.id)
+            training_data_energy.append(row.data.total_energy/len(atoms))
+
+            pos = atoms.positions
+            distances = distance.cdist(pos, pos)
+            np.fill_diagonal(distances, np.inf)
+            min_distances = np.min(distances, axis=1)
+            average_distance = np.mean(min_distances)
+            training_data_nn_dist_ave.append(average_distance)
+
+        plt.scatter(training_data_nn_dist_ave,training_data_energy,label="DFT training data")
         plt.savefig("rebo_test.png")
         plt.show()
+
+
 
