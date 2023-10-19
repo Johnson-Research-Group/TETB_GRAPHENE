@@ -127,6 +127,12 @@ class TEGT_Calc(Calculator):
     def run_lammps(self,atoms):
         """ evaluate corrective potential energy, forces in lammps 
         """
+        if not atoms.has("mol-id"):
+            mol_id = np.ones(len(atoms),dtype=np.int8)
+            sym = atoms.get_chemical_symbols()
+            top_layer_ind = np.where(sym==sym[0])
+            mol_id[top_layer_ind] += 1
+            atoms.set_array("mol-id",mol_id)
         #update atom positions in lammps object, need to make sure pylammps object is only initialized on rank 0 so I don't have to keep writing data files
         #if not self.pylammps_started:
         self.L = self.init_pylammps(atoms)
