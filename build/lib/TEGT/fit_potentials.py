@@ -20,7 +20,11 @@ import ase.db
 import glob
 #import mlflow
 from ase.build import make_supercell
+from scipy.optimize import curve_fit
+from scipy.spatial import distance
 
+def quadratic_function(x, a, b, c):
+    return a * x**2 + b * x + c
 
 def get_basis(a, d, c, disregistry, zshift='CM'):
 
@@ -65,8 +69,10 @@ def get_bilayer_atoms(d,disregistry, a=2.46, c=20, sc=5,zshift='CM'):
         pbc=[1, 1, 1],
         tags=[0, 0, 1, 1],
         )
-    
+    atoms.set_array("mol-id",np.array([1,1,2,2]))  
     atoms = make_supercell(atoms, [[sc, 0, 0], [0, sc, 0], [0, 0, 1]])
+    print(atoms.has("mol-id"))
+    print(atoms.get_array("mol-id"))
     return atoms
 
 def get_monolayer_atoms(dx,dy,a=2.462):
@@ -93,8 +99,8 @@ def format_params(params, sep=' ', prec='.15f'):
 
 def check_keywords(string):
    """check to see which keywords are in string """
-   keywords = ['Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'Beta_CC1', 
-             'Beta_CC2']
+   keywords = ['Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'BIJc_CC3','Beta_CC1', 
+             'Beta_CC2','Beta_CC3']
    
    for k in keywords:
        if k in string:
@@ -104,12 +110,12 @@ def check_keywords(string):
    
 def write_rebo(params,rebo_file):
     """write rebo potential given list of parameters. assumed order is
-    Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , Beta_CC1, Beta_CC2
+    Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 ,BIJc_CC3, Beta_CC1, Beta_CC2,Beta_CC3
     
     :param params: (list) list of rebo parameters
     """
-    keywords = [ 'Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'Beta_CC1', 
-              'Beta_CC2']
+    keywords = [ 'Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2','BIJc_CC3', 'Beta_CC1', 
+              'Beta_CC2', 'Beta_CC3']
     param_dict=dict(zip(keywords,params))
     with open(rebo_file, 'r') as f:
         lines = f.readlines()
@@ -251,8 +257,8 @@ if __name__ == '__main__':
         file_list = glob.glob("../../tBLG_DFT/grapheneCalc*",recursive=True)
         for f in file_list:
             print(os.path.join(f,"log"))
-            atoms = ase.io.read(os.path.join(f,"log"),format="espresso-out")
             try:
+                atoms = ase.io.read(os.path.join(f,"log"),format="espresso-out")
                 total_energy = atoms.get_total_energy()
             except:
                 print("DFT failed")
@@ -266,8 +272,9 @@ if __name__ == '__main__':
         print("fitting intralayer potential")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
-        p0 = [0.4787439526021916 ,4.763581262711529,10493.065144313845,11193.716433093443,
-              -4.082242700692129,4.59957491269822, 0.07885385443664605,E0]
+        #Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , BIJc_CC3, Beta_CC1, Beta_CC2, Beta_CC3
+        p0 = [0.3134602960833 ,4.7465390606595,10953.544162170,12388.79197798,
+              17.56740646509,30.71493208065,4.7204523127, 1.4332132499, 1.3826912506,E0]
         potential = "rebo"
         fitting_obj = fit_potentials_tblg(calc_obj, db, potential,fit_forces=False)
         pfinal = fitting_obj.fit(p0)
@@ -330,19 +337,71 @@ if __name__ == '__main__':
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
         a = 2.462
-        n=10
-        lat_con_list = np.linspace((1-0.1)*a,(1.1)*a,n)
-        lat_con_energy = np.zeros(n)
+        lat_con_list = np.sqrt(3) * np.array([1.197813121272366,1.212127236580517,1.2288270377733599,1.2479125248508947,\
+                                1.274155069582505,1.3027833001988072,1.3433399602385685,1.4053677932405566,\
+                                1.4745526838966203,1.5294234592445326,1.5795228628230618])
+
+        lat_con_energy = np.zeros_like(lat_con_list)
+        tb_energy = np.zeros_like(lat_con_list)
+        rebo_energy = np.zeros_like(lat_con_list)
+        dft_energy = np.array([-5.62588911,-6.226154186,-6.804241219,-7.337927988,-7.938413961,\
+                                -8.472277446,-8.961917385,-9.251954937,-9.119902805,-8.832030042,-8.432957809])
+
         for i,lat_con in enumerate(lat_con_list):
-            print("a = ",lat_con)
+            
             atoms = get_monolayer_atoms(0,0,a=lat_con)
+            print("a = ",lat_con," natoms = ",len(atoms))
             atoms.calc = calc_obj
-            total_energy = atoms.get_potential_energy()/len(atoms)
-            lat_con_energy[i] = total_energy
-        plt.plot(lat_con_list,lat_con_energy,label = "rebo fit")
-        plt.xlabel("lattice constant (angstroms)")
-        plt.ylabel("energy (eV)")
+            #total_energy = atoms.get_potential_energy()/len(atoms)
+            tb_energy_geom,tb_forces = calc_obj.run_tight_binding(atoms)
+            tb_energy[i] = tb_energy_geom/len(atoms)
+            lammps_forces,lammps_pe,tote = calc_obj.run_lammps(atoms)
+            rebo_energy[i] = tote/len(atoms)
+            total_energy = tote + tb_energy_geom
+            lat_con_energy[i] = total_energy/len(atoms)
+        fit_min_ind = np.argmin(lat_con_energy)
+        initial_guess = (1.0, 1.0, 1.0)  # Initial parameter guess
+        rebo_params, covariance = curve_fit(quadratic_function, lat_con_list, lat_con_energy, p0=initial_guess)
+
+        dft_min_ind = np.argmin(dft_energy)
+        initial_guess = (1.0, 1.0, 1.0)  # Initial parameter guess
+        dft_params, covariance = curve_fit(quadratic_function, lat_con_list, dft_energy, p0=initial_guess)
+
+        print("rebo fit minimum energy = ",str(rebo_params[-1]))
+        print("rebo fit minimum lattice constant = ",str(lat_con_list[fit_min_ind]))
+        print("rebo young's modulus = ",str(rebo_params[0]))
+        print("DFT minimum energy = ",str(dft_params[-1]))
+        print("DFT minimum lattice constant = ",str(lat_con_list[dft_min_ind]))
+        print("DFT young's modulus = ",str(dft_params[0]))
+
+        plt.plot(lat_con_list/np.sqrt(3),lat_con_energy-np.min(lat_con_energy),label = "rebo fit")
+        #plt.plot(lat_con_list/np.sqrt(3),tb_energy-tb_energy[fit_min_ind],label = "tight binding energy")
+        #plt.plot(lat_con_list/np.sqrt(3),rebo_energy - rebo_energy[fit_min_ind],label="rebo corrective energy")
+        plt.plot(lat_con_list/np.sqrt(3), dft_energy-np.min(dft_energy),label="dft results")
+        plt.xlabel("nearest neighbor distance (angstroms)")
+        plt.ylabel("energy above ground state (eV/atom)")
         plt.legend()
+        
+
+        db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
+        training_data_energy = []
+        training_data_nn_dist_ave = []
+        for row in db.select():
+
+            atoms = db.get_atoms(id = row.id)
+            training_data_energy.append(row.data.total_energy/len(atoms))
+
+            pos = atoms.positions
+            distances = distance.cdist(pos, pos)
+            np.fill_diagonal(distances, np.inf)
+            min_distances = np.min(distances, axis=1)
+            average_distance = np.mean(min_distances)
+            training_data_nn_dist_ave.append(average_distance)
+
+        plt.scatter(training_data_nn_dist_ave,training_data_energy-np.min(training_data_energy),label="DFT training data")
+        plt.ylim(0,5)
         plt.savefig("rebo_test.png")
         plt.show()
+
+
 

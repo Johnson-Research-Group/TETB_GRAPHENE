@@ -1,8 +1,12 @@
+MANIFEST.in
 setup.py
+TEGT/TB_Utils.jl
+TEGT/TEGT_TB.jl
 TEGT/TEGT_calc.py
 TEGT/__init__.py
 TEGT/fit_potentials.py
 TEGT/submit_fit_potential.py
+TEGT/tb_parameters.jl
 TEGT.egg-info/PKG-INFO
 TEGT.egg-info/SOURCES.txt
 TEGT.egg-info/dependency_links.txt

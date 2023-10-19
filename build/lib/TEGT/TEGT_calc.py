@@ -57,7 +57,8 @@ class TEGT_Calc(Calculator):
         self.model_dict=model_dict
         self.device_num = device_num
         self.device_type = device_type
-        self.repo_root = os.path.join("/".join(TEGT.__file__.split("/")[:-1]),"parameters")
+        self.repo_root = os.path.join("/".join(TEGT.__file__.split("/")[:-1]))
+        self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
                      "Rebo":"CH.rebo",
                      "Pz pairwise":"pz_pairwise_correction.table",
@@ -140,7 +141,7 @@ class TEGT_Calc(Calculator):
         ke = self.L.eval("ke")
         for i in range(atoms.get_global_number_of_atoms()):
             forces[i,:] = self.L.atoms[i].force
-        self.L.close()
+        del self.L
         return forces,pe,pe+ke
     
     def get_tb_fxn(self,positions,atom_types,cell,kpoints,tbparams,calc_type="force"):
@@ -148,7 +149,7 @@ class TEGT_Calc(Calculator):
             def func(i):
                 from julia.api import Julia
                 jl = Julia(compiled_modules=False)
-                jl.eval('include("TEGT_TB.jl")')
+                jl.eval('include("'+self.repo_root+'/TEGT_TB.jl")')
                 from julia import Main
                 #get energy and force at a single kpoint from julia
                 kpoint = kpoints[i,:]
@@ -158,7 +159,7 @@ class TEGT_Calc(Calculator):
             def func(i):
                 from julia.api import Julia
                 jl = Julia(compiled_modules=False)
-                jl.eval('include("TEGT_TB.jl")')
+                jl.eval('include("'+self.repo_root+'/TEGT_TB.jl")')
                 from julia import Main
                 #get energy and force at a single kpoint from julia
                 kpoint = kpoints[i,:]
@@ -168,7 +169,7 @@ class TEGT_Calc(Calculator):
             def func(i):
                 from julia.api import Julia
                 jl = Julia(compiled_modules=False)
-                jl.eval('include("TEGT_TB.jl")')
+                jl.eval('include("'+self.repo_root+'/TEGT_TB.jl")')
                 from julia import Main
                 #get energy and force at a single kpoint from julia
                 kpoint = kpoints[i,:]
@@ -273,7 +274,7 @@ class TEGT_Calc(Calculator):
                 print("rebo potential file does not exist")
                 exit()
         else:
-            self.rebo_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["intralayer potential"]])
+            self.rebo_file = os.path.join(self.param_root,self.option_to_file[self.model_dict["intralayer potential"]])
 
         if self.model_dict["interlayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
@@ -283,7 +284,7 @@ class TEGT_Calc(Calculator):
                 print("interlayer potential file does not exist")
                 exit()
         else:
-            self.kc_file = os.path.join(self.repo_root,self.option_to_file[self.model_dict["interlayer potential"]])
+            self.kc_file = os.path.join(self.param_root,self.option_to_file[self.model_dict["interlayer potential"]])
 
         if np.prod(self.model_dict['kmesh'])>1:
             if self.model_dict["intralayer potential"]:

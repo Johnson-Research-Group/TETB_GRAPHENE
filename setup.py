@@ -7,5 +7,6 @@ setup(
     install_requires=[
         # Your package dependencies
     ],
+    include_package_data=True,
 )
 

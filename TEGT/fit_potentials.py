@@ -69,7 +69,7 @@ def get_bilayer_atoms(d,disregistry, a=2.46, c=20, sc=5,zshift='CM'):
         pbc=[1, 1, 1],
         tags=[0, 0, 1, 1],
         )
-    
+    atoms.set_array("mol-id",np.array([1,1,2,2],dtype=np.int8))  
     atoms = make_supercell(atoms, [[sc, 0, 0], [0, sc, 0], [0, 0, 1]])
     return atoms
 
@@ -97,8 +97,8 @@ def format_params(params, sep=' ', prec='.15f'):
 
 def check_keywords(string):
    """check to see which keywords are in string """
-   keywords = ['Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'Beta_CC1', 
-             'Beta_CC2']
+   keywords = ['Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'BIJc_CC3','Beta_CC1', 
+             'Beta_CC2','Beta_CC3']
    
    for k in keywords:
        if k in string:
@@ -108,12 +108,12 @@ def check_keywords(string):
    
 def write_rebo(params,rebo_file):
     """write rebo potential given list of parameters. assumed order is
-    Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , Beta_CC1, Beta_CC2
+    Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 ,BIJc_CC3, Beta_CC1, Beta_CC2,Beta_CC3
     
     :param params: (list) list of rebo parameters
     """
-    keywords = [ 'Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'Beta_CC1', 
-              'Beta_CC2']
+    keywords = [ 'Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2','BIJc_CC3', 'Beta_CC1', 
+              'Beta_CC2', 'Beta_CC3']
     param_dict=dict(zip(keywords,params))
     with open(rebo_file, 'r') as f:
         lines = f.readlines()
@@ -270,8 +270,9 @@ if __name__ == '__main__':
         print("fitting intralayer potential")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
-        p0 = [0.4787439526021916 ,4.763581262711529,10493.065144313845,11193.716433093443,
-              -4.082242700692129,4.59957491269822, 0.07885385443664605,E0]
+        #Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , BIJc_CC3, Beta_CC1, Beta_CC2, Beta_CC3
+        p0 = [0.3134602960833 ,4.7465390606595,10953.544162170,12388.79197798,
+              17.56740646509,30.71493208065,4.7204523127, 1.4332132499, 1.3826912506,E0]
         potential = "rebo"
         fitting_obj = fit_potentials_tblg(calc_obj, db, potential,fit_forces=False)
         pfinal = fitting_obj.fit(p0)
@@ -371,10 +372,10 @@ if __name__ == '__main__':
         print("DFT minimum lattice constant = ",str(lat_con_list[dft_min_ind]))
         print("DFT young's modulus = ",str(dft_params[0]))
 
-        plt.plot(lat_con_list,lat_con_energy-np.min(lat_con_energy),label = "rebo fit")
-        plt.plot(lat_con_list,tb_energy-tb_energy[fit_min_ind],label = "tight binding energy")
-        plt.plot(lat_con_list,rebo_energy - rebo_energy[fit_min_ind],label="rebo corrective energy")
-        plt.plot(lat_con_list, dft_energy-np.min(dft_energy),label="dft results")
+        plt.plot(lat_con_list/np.sqrt(3),lat_con_energy-np.min(lat_con_energy),label = "rebo fit")
+        #plt.plot(lat_con_list/np.sqrt(3),tb_energy-tb_energy[fit_min_ind],label = "tight binding energy")
+        #plt.plot(lat_con_list/np.sqrt(3),rebo_energy - rebo_energy[fit_min_ind],label="rebo corrective energy")
+        plt.plot(lat_con_list/np.sqrt(3), dft_energy-np.min(dft_energy),label="dft results")
         plt.xlabel("nearest neighbor distance (angstroms)")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.legend()
@@ -395,7 +396,8 @@ if __name__ == '__main__':
             average_distance = np.mean(min_distances)
             training_data_nn_dist_ave.append(average_distance)
 
-        plt.scatter(training_data_nn_dist_ave,training_data_energy,label="DFT training data")
+        plt.scatter(training_data_nn_dist_ave,training_data_energy-np.min(training_data_energy),label="DFT training data")
+        plt.ylim(0,5)
         plt.savefig("rebo_test.png")
         plt.show()
 
