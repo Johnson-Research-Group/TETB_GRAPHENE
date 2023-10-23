@@ -40,8 +40,8 @@ if __name__=="__main__":
     nkp = [225]
     for t in tb_models:
         for k in nkp:
-            #executable = "python fit_potentials.py -m "+t+" -t interlayer -k "+str(k)+" -s True"
-            #submit_batch_file_perlmutter(executable,batch_options)
-
-            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k)+" -s True"
+            executable = "python fit_potentials.py -m "+t+" -t interlayer -k "+str(k)+" -s True"
             submit_batch_file_perlmutter(executable,batch_options)
+
+            #executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k)+" -s True"
+            #submit_batch_file_perlmutter(executable,batch_options)

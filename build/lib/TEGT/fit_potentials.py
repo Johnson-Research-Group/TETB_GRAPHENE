@@ -69,10 +69,8 @@ def get_bilayer_atoms(d,disregistry, a=2.46, c=20, sc=5,zshift='CM'):
         pbc=[1, 1, 1],
         tags=[0, 0, 1, 1],
         )
-    atoms.set_array("mol-id",np.array([1,1,2,2]))  
+    atoms.set_array("mol-id",np.array([1,1,2,2],dtype=np.int8))  
     atoms = make_supercell(atoms, [[sc, 0, 0], [0, sc, 0], [0, 0, 1]])
-    print(atoms.has("mol-id"))
-    print(atoms.get_array("mol-id"))
     return atoms
 
 def get_monolayer_atoms(dx,dy,a=2.462):
@@ -284,7 +282,7 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225_final_version"),
                           "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
                           'output':args.output})
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)

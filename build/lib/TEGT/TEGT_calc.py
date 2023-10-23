@@ -127,6 +127,12 @@ class TEGT_Calc(Calculator):
     def run_lammps(self,atoms):
         """ evaluate corrective potential energy, forces in lammps 
         """
+        if not atoms.has("mol-id"):
+            mol_id = np.ones(len(atoms),dtype=np.int8)
+            sym = atoms.get_chemical_symbols()
+            top_layer_ind = np.where(np.array(sym)!=sym[0])[0]
+            mol_id[top_layer_ind] += 1
+            atoms.set_array("mol-id",mol_id)
         #update atom positions in lammps object, need to make sure pylammps object is only initialized on rank 0 so I don't have to keep writing data files
         #if not self.pylammps_started:
         self.L = self.init_pylammps(atoms)
@@ -217,12 +223,11 @@ class TEGT_Calc(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-
-        #else:
-        self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
         #if MPI.COMM_WORLD.rank == 0:
         self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
-        #run lammps part first then run latte part. Sum the two
+        #else:
+        self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
+         #run lammps part first then run latte part. Sum the two
         if self.use_tb:
             self.results['forces'] = self.Lammps_forces + self.tb_forces 
             self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
@@ -275,6 +280,11 @@ class TEGT_Calc(Calculator):
                 exit()
         else:
             self.rebo_file = os.path.join(self.param_root,self.option_to_file[self.model_dict["intralayer potential"]])
+            if np.prod(self.model_dict['kmesh'])>1:
+                if self.model_dict["intralayer potential"]:
+                    if self.model_dict["intralayer potential"].split(" ")[-1]!='nkp225':
+                        self.model_dict["intralayer potential"] = self.model_dict["intralayer potential"]+' nkp225'
+                        self.rebo_file+="_nkp225"
 
         if self.model_dict["interlayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
@@ -285,15 +295,12 @@ class TEGT_Calc(Calculator):
                 exit()
         else:
             self.kc_file = os.path.join(self.param_root,self.option_to_file[self.model_dict["interlayer potential"]])
+            if np.prod(self.model_dict["kmesh"])>1:
+                if self.model_dict["interlayer potential"]:
+                    if self.model_dict["interlayer potential"].split(" ")[-1]!='nkp225':
+                        self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp225'
+                        self.kc_file+="_nkp225"
 
-        if np.prod(self.model_dict['kmesh'])>1:
-            if self.model_dict["intralayer potential"]:
-                if self.model_dict["intralayer potential"].split(" ")[-1]!='nkp225':
-                    self.model_dict["intralayer potential"] = self.model_dict["intralayer potential"]+' nkp225'
-            if self.model_dict["interlayer potential"]:
-                if self.model_dict["interlayer potential"].split(" ")[-1]!='nkp225':
-                    self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp225'
-        
         self.output = self.model_dict["output"]
         if self.output!=".":
             if not os.path.exists(self.output):

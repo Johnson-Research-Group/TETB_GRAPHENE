@@ -95,7 +95,7 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":"popov", 
                           "basis":"pz",
-                          "kmesh":(2,2,1),
+                          "kmesh":(1,1,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -232,7 +232,8 @@ if __name__=="__main__":
         calc_folder = "theta_21_78"
         if not os.path.exists(calc_folder):
             os.mkdir(calc_folder)
+        #energy = atoms.get_potential_energy()
         dyn = FIRE(atoms,
                    trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
                    logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
-        dyn.run(fmax=0.05)
+        dyn.run(fmax=0.00005)

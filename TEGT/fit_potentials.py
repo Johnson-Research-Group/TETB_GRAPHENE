@@ -170,7 +170,7 @@ class fit_potentials_tblg:
             f.write(str(rms)+" "+wp+"\n")
         return rms
     
-    def fit(self,p0,min_type="Nelder-Mead"):
+    def fit(self,p0,min_type="global"):
         '''
         bound all params = [0, np.inf]
         '''
@@ -282,7 +282,7 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225_final_version"),
                           "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
                           'output':args.output})
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
@@ -329,7 +329,7 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225_final_version"),
                           "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
                           'output':args.output})
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
@@ -397,7 +397,7 @@ if __name__ == '__main__':
             training_data_nn_dist_ave.append(average_distance)
 
         plt.scatter(training_data_nn_dist_ave,training_data_energy-np.min(training_data_energy),label="DFT training data")
-        plt.ylim(0,5)
+        #plt.ylim(0,5)
         plt.savefig("rebo_test.png")
         plt.show()
 
