@@ -83,7 +83,6 @@ def get_monolayer_atoms(dx,dy,a=2.462):
 def write_kcinsp(params,kc_file):
     params = params[:9]
     params = " ".join([str(x) for x in params])
-    
     headers = '               '.join(['', "delta","C","C0 ","C2","C4","z0","A6","A8","A10"])
     with open(kc_file, 'w+') as f:
         f.write("# Refined parameters for Kolmogorov-Crespi Potential with taper function\n\
@@ -170,7 +169,7 @@ class fit_potentials_tblg:
             f.write(str(rms)+" "+wp+"\n")
         return rms
     
-    def fit(self,p0,min_type="global"):
+    def fit(self,p0,min_type="basinhopping"):
         '''
         bound all params = [0, np.inf]
         '''
@@ -282,8 +281,8 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225_final_version"),
-                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225_final_version"),
                           'output':args.output})
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
@@ -291,7 +290,7 @@ if __name__ == '__main__':
         disreg_ = [0 , 0.16667, 0.5, 0.66667]
         colors = ["blue","red","black","green"]
         d_ = np.linspace(3,5,5)
-        df = pd.read_csv('data/qmc.csv')
+        df = pd.read_csv('../data/qmc.csv')
         
         d_ab = df.loc[df['disregistry'] == 0, :]
         min_ind = np.argmin(d_ab["energy"].to_numpy())
@@ -299,7 +298,7 @@ if __name__ == '__main__':
         d = d_ab["d"].to_numpy()[min_ind]
         disreg = d_ab["disregistry"].to_numpy()[min_ind]
 
-        E0_tegt = -144.17107834841926
+        E0_tegt = 0
         
         for i,stacking in enumerate(stacking_):
             energy_dis_tegt = []
@@ -310,17 +309,20 @@ if __name__ == '__main__':
             for j, row in d_stack.iterrows():
                 atoms = get_bilayer_atoms(row["d"],dis)
                 atoms.calc = calc_obj
-                total_energy = (atoms.get_potential_energy())/len(atoms) - E0_tegt - E0_qmc
-                qmc_total_energy = (row["energy"]-E0_qmc)
+                total_energy = (atoms.get_potential_energy())/len(atoms)
+                if total_energy<E0_tegt:
+                    E0_tegt = total_energy
+                qmc_total_energy = (row["energy"])
 
                 energy_dis_tegt.append(total_energy)
                 energy_dis_qmc.append(qmc_total_energy)
                 d_.append(row["d"])
 
-            plt.plot(d_,energy_dis_tegt,label=dis+" tegt",c=colors[i])
-            plt.scatter(d_,energy_dis_qmc,label=dis+" qmc",c=colors[i])
+            plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " tegt",c=colors[i])
+            plt.scatter(d_,np.array(energy_dis_qmc)-E0_qmc,label=stacking + " qmc",c=colors[i])
         plt.xlabel("interlayer distance (Angstroms)")
         plt.ylabel("interlayer energy (eV)")
+        plt.title("Corrective Interlayer Potential for BLG, num kpoints = "+str(args.nkp))
         plt.legend()
         plt.savefig("kc_insp_test.png")
         plt.show()
