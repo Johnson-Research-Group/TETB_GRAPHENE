@@ -64,7 +64,7 @@ class TEGT_Calc(Calculator):
                      "Pz pairwise":"pz_pairwise_correction.table",
                      "Pz rebo":"CH_pz.rebo",
                      "Pz rebo nkp225":"CH_pz.rebo_nkp225",
-                     "kolmogorov crespi":"fullKC.txt",
+                     "kolmogorov crespi":"CC_QMC.KC",
                      "KC inspired":"KC_insp.txt",
                      "Pz KC inspired":"KC_insp_pz.txt",
                      "Pz KC inspired nkp225":"KC_insp_pz.txt_nkp225"
@@ -109,12 +109,16 @@ class TEGT_Calc(Calculator):
         # Interaction potential for carbon atoms
         ######################## Potential defition ########################
         
-        if ntypes ==2:
-            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
+        if ntypes ==2 and self.use_tb:
+            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo/sigma 3")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
+            L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
+        elif ntypes==2 and not self.use_tb:
+            L.command("pair_style       hybrid/overlay kolmogorov/crespi/full 10.0 0 rebo")
+            L.command("pair_coeff       * *   kolmogorov/crespi/full  "+self.kc_file+"   C C") # long-range
             L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
         else:
-            L.command("pair_style       rebo")
+            L.command("pair_style       airebo/sigma 3")
             L.command("pair_coeff      * * "+self.rebo_file+" C")
 
         ####################################################################
@@ -226,9 +230,9 @@ class TEGT_Calc(Calculator):
         #if MPI.COMM_WORLD.rank == 0:
         self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #else:
-        self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
-         #run lammps part first then run latte part. Sum the two
+        #run lammps part first then run latte part. Sum the two
         if self.use_tb:
+            self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
             self.results['forces'] = self.Lammps_forces + self.tb_forces 
             self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
             self.results['energy'] = self.Lammps_tot_energy + self.tb_Energy
@@ -265,7 +269,7 @@ class TEGT_Calc(Calculator):
             model_dict[k] = input_dict[k]
         self.model_dict = model_dict
         self.norbs_per_atoms = orbs_basis[self.model_dict["basis"]]
-        if self.model_dict["tight binding parameters"] == None:
+        if not self.model_dict["tight binding parameters"]:
             use_tb=False
         else:
             use_tb=True
@@ -300,6 +304,10 @@ class TEGT_Calc(Calculator):
                     if self.model_dict["interlayer potential"].split(" ")[-1]!='nkp225':
                         self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp225'
                         self.kc_file+="_nkp225"
+        if not self.use_tb:
+            #if tight binding model is not called for override choices and use only classical potentials
+            self.kc_file = os.path.join(self.param_root,self.option_to_file["kolmogorov crespi"])
+            self.rebo_file = os.path.join(self.param_root,self.option_to_file["Rebo"])
 
         self.output = self.model_dict["output"]
         if self.output!=".":

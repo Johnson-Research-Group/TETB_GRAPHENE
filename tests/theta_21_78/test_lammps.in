@@ -14,10 +14,10 @@ velocity	all create 0.0 87287 loop geom
 #potential for carbon atoms
 ########## Potential defition ########################
 
-pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo/sigma
+pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo/sigma 3
 #pair_style rebo 
 pair_coeff       * *   reg/dep/poly  KC_insp_pz.txt   C C # long-range 
-pair_coeff      * * airebo/sigma CH.rebo C C
+pair_coeff      * * airebo/sigma CH.airebo C C
 ######################################################
 
 #neighbor	2.0 bin

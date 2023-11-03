@@ -110,15 +110,15 @@ class TEGT_Calc(Calculator):
         ######################## Potential defition ########################
         
         if ntypes ==2 and self.use_tb:
-            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
+            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo/sigma 3")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
-            L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
+            L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
         elif ntypes==2 and not self.use_tb:
             L.command("pair_style       hybrid/overlay kolmogorov/crespi/full 10.0 0 rebo")
             L.command("pair_coeff       * *   kolmogorov/crespi/full  "+self.kc_file+"   C C") # long-range
             L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
         else:
-            L.command("pair_style       rebo")
+            L.command("pair_style       airebo/sigma 3")
             L.command("pair_coeff      * * "+self.rebo_file+" C")
 
         ####################################################################
@@ -304,7 +304,6 @@ class TEGT_Calc(Calculator):
                     if self.model_dict["interlayer potential"].split(" ")[-1]!='nkp225':
                         self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp225'
                         self.kc_file+="_nkp225"
-
         if not self.use_tb:
             #if tight binding model is not called for override choices and use only classical potentials
             self.kc_file = os.path.join(self.param_root,self.option_to_file["kolmogorov crespi"])

@@ -83,7 +83,7 @@ if __name__=="__main__":
             batch_options["--output"]= "gamma_interlayer.log"
             #submit_batch_file_uiuc_cc(executable,batch_options)
 
-            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k)+" -g False -oz basinhopping"
+            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k)+" -g True -oz tb_weight"
             batch_options["--job-name"]="mesh225_intralayer"
             batch_options["--output"]= "mesh225_intralayer.log"
             #submit_batch_file_perlmutter(executable,batch_options)
