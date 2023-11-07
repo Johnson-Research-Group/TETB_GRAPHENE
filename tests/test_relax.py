@@ -95,7 +95,7 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":"popov", 
                           "basis":"pz",
-                          "kmesh":(1,1,1),
+                          "kmesh":(4,4,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})

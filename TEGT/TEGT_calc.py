@@ -201,12 +201,26 @@ class TEGT_Calc(Calculator):
         kind = np.array(range(self.nkp))
         #use_ind = np.split(kind,number_of_cpu)
         #ndiv = len(use_ind)
-        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
+        """output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
         for i in range(self.nkp):
             #e,f = tb_fxn(i)
             tb_energy += output[i][0]
+            tb_forces += output[i][1]"""
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        comm.bcast(self.nkp, root=0)
+        indices = np.arange(self.nkp)
+        print(self.nkp,indices)
+        #this works across multiple nodes
+        local_indices = indices[rank::comm.size]
+        print(rank,comm.size,local_indices)
+        output = Parallel(n_jobs=len(local_indices))(delayed(tb_fxn)(i) for i in local_indices)
+        print("output length = ",len(output))
+        for i in range(len(local_indices)):
+            #e,f = tb_fxn(i)
+            tb_energy += output[i][0]
             tb_forces += output[i][1]
-        return tb_energy.real/self.nkp, tb_forces.real/self.nkp
+        return tb_energy.real, tb_forces.real
     
     def get_band_structure(self,atoms,kpoints):
         nkp = np.shape(kpoints)[0]
@@ -227,16 +241,24 @@ class TEGT_Calc(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        #if MPI.COMM_WORLD.rank == 0:
-        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
+        if MPI.COMM_WORLD.rank == 0:
+            self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #else:
         #run lammps part first then run latte part. Sum the two
         if self.use_tb:
-            self.tb_Energy,self.tb_forces = self.run_tight_binding(atoms)
-            self.results['forces'] = self.Lammps_forces + self.tb_forces 
-            self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
-            self.results['energy'] = self.Lammps_tot_energy + self.tb_Energy
-
+            tb_Energy,tb_forces = self.run_tight_binding(atoms)
+            print("tb passed")
+            all_tbforces = MPI.COMM_WORLD.gather(tb_forces, root=0)
+            all_tbEnergy = MPI.COMM_WORLD.gather(tb_Energy,root=0)
+            MPI.COMM_WORLD.barrier()
+            if MPI.COMM_WORLD.rank == 0:
+                self.tb_forces = np.sum(all_tbforces, axis=0)/self.nkp
+                self.tb_Energy = np.sum(all_tbEnergy)/self.nkp
+                self.results['forces'] = self.Lammps_forces + self.tb_forces 
+                self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
+                self.results['energy'] = self.Lammps_tot_energy + self.tb_Energy
+                MPI.COMM_WORLD.bcast(self.results,root=0)
+            
         else:
             self.results['forces'] = self.Lammps_forces
             self.results['potential_energy'] = self.Lammps_potential_energy
