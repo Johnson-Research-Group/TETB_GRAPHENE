@@ -27,6 +27,8 @@ import joblib
 from joblib import Parallel, delayed
 from mpi4py import MPI
 import TEGT
+from TEGT_TB_cupy import *
+from ase.parallel import parallel_function
 
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
@@ -34,7 +36,7 @@ import TEGT
 class TEGT_Calc(Calculator):
     
     implemented_properties = ['energy','forces','potential_energy']
-    def __init__(self,model_dict=None,restart_file=None, device_num=1,device_type="cpu",**kwargs):
+    def __init__(self,model_dict=None,restart_file=None, **kwargs):
         """
         ase calculator object that calculates total energies and forces given a 
         total energy tight binding model. can specify number of kpoints to be either 1 or 225, 
@@ -55,8 +57,7 @@ class TEGT_Calc(Calculator):
         """
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
-        self.device_num = device_num
-        self.device_type = device_type
+
         self.repo_root = os.path.join("/".join(TEGT.__file__.split("/")[:-1]))
         self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
@@ -157,37 +158,26 @@ class TEGT_Calc(Calculator):
     def get_tb_fxn(self,positions,atom_types,cell,kpoints,tbparams,calc_type="force"):
         if calc_type=="force":
             def func(i):
-                from julia.api import Julia
-                jl = Julia(compiled_modules=False)
-                jl.eval('include("'+self.repo_root+'/TEGT_TB.jl")')
-                from julia import Main
                 #get energy and force at a single kpoint from julia
                 kpoint = kpoints[i,:]
-                energy,force = Main.JULIA_get_tb_forces_energy(positions,atom_types,cell,kpoint,tbparams,self.device_num,self.device_type)
+                energy,force = get_tb_forces_energy(positions,atom_types,cell,kpoint,tbparams)
                 return energy,force
         elif calc_type=="force_fd":
             def func(i):
-                from julia.api import Julia
-                jl = Julia(compiled_modules=False)
-                jl.eval('include("'+self.repo_root+'/TEGT_TB.jl")')
-                from julia import Main
                 #get energy and force at a single kpoint from julia
                 kpoint = kpoints[i,:]
-                energy,force = Main.JULIA_get_tb_forces_energy_fd(positions,atom_types,cell,kpoint,tbparams)
+                energy,force = get_tb_forces_energy_fd(positions,atom_types,cell,kpoint,tbparams)
                 return energy,force
         elif calc_type=="bands":
             def func(i):
-                from julia.api import Julia
-                jl = Julia(compiled_modules=False)
-                jl.eval('include("'+self.repo_root+'/TEGT_TB.jl")')
-                from julia import Main
                 #get energy and force at a single kpoint from julia
                 kpoint = kpoints[i,:]
-                evals,evecs = Main.JULIA_get_band_structure(positions,atom_types,cell,kpoint,tbparams,self.device_num,self.device_type)
+                evals,evecs = get_band_structure(positions,atom_types,cell,kpoint,tbparams)
                 return evals,evecs
             
         return func
     
+    @parallel_function
     def run_tight_binding(self,atoms,force_type="force"):
         """ get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)
         """
@@ -197,29 +187,46 @@ class TEGT_Calc(Calculator):
         tb_energy = 0
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
         
-        number_of_cpu = joblib.cpu_count()
-        kind = np.array(range(self.nkp))
-        #use_ind = np.split(kind,number_of_cpu)
-        #ndiv = len(use_ind)
-        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
-        for i in range(self.nkp):
-            #e,f = tb_fxn(i)
-            tb_energy += output[i][0]
-            tb_forces += output[i][1]
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        indices = np.arange(self.nkp)
+        #this works across multiple nodes
+        local_indices = indices[rank::comm.size]
+        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in local_indices)
+        band_data = comm.gather(output, root=0)
+        if rank==0:
+            for i,bd_dim1 in enumerate(band_data):
+                for j,bd_dim2 in enumerate(bd_dim1):
+                    tb_energy += bd_dim2[0] 
+                    tb_forces += bd_dim2[1]
+
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
+    @parallel_function
     def get_band_structure(self,atoms,kpoints):
         nkp = np.shape(kpoints)[0]
         tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
                                  kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         evals = np.zeros((atoms.get_global_number_of_atoms(),nkp))
         evecs = np.zeros((atoms.get_global_number_of_atoms(),atoms.get_global_number_of_atoms(),nkp),dtype=complex) 
-        number_of_cpu = joblib.cpu_count()
-        output = Parallel(n_jobs=number_of_cpu)(delayed(tb_fxn)(i) for i in range(nkp))
-        for i in range(nkp):
-            evals[:,i] = np.squeeze(output[i][0])
-            evecs[:,:,i] = np.squeeze(output[i][1])
-
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        indices = np.arange(nkp)
+        #this works across multiple nodes
+        local_indices = indices[rank::comm.size]
+        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in local_indices)
+        band_data = comm.gather(output, root=0)
+        if rank == 0:
+            dim1 = len(band_data)
+            kpoint_disorder = np.zeros_like(kpoints)
+            for i,bd_dim1 in enumerate(band_data):
+                for j,bd_dim2 in enumerate(bd_dim1):
+                    #sort evals evecs to match kpoints
+                    kpoint_disorder = np.squeeze(output[2])
+                    index = np.argmin(np.linalg.norm(kpoints-kpoint_disorder,axis=1))
+                    evals[:,index] = np.squeeze(output[0])
+                    evecs[:,:,index] = np.squeeze(output[1])
+                     
         return evals,evecs
         
     def calculate(self, atoms, properties=None,
@@ -227,8 +234,8 @@ class TEGT_Calc(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        #if MPI.COMM_WORLD.rank == 0:
-        self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
+        if MPI.COMM_WORLD.rank == 0:
+            self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
         #else:
         #run lammps part first then run latte part. Sum the two
         if self.use_tb:
