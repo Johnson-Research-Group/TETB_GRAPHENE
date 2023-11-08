@@ -416,7 +416,7 @@ if __name__ == '__main__':
         dft_energy = np.array([-5.62588911,-6.226154186,-6.804241219,-7.337927988,-7.938413961,\
                                 -8.472277446,-8.961917385,-9.251954937,-9.119902805,-8.832030042,-8.432957809])
 
-        for i,lat_con in enumerate(lat_con_list):
+        """for i,lat_con in enumerate(lat_con_list):
             
             atoms = get_monolayer_atoms(0,0,a=lat_con)
             print("a = ",lat_con," natoms = ",len(atoms))
@@ -452,9 +452,9 @@ if __name__ == '__main__':
         plt.xlabel("nearest neighbor distance (angstroms)")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.legend()
-        plt.savefig("rebo_lat_con.png")
+        plt.savefig("rebo_lat_con_nkp"+str(nkp)+".png")
         plt.show()
-        plt.clf()
+        plt.clf()"""
         
 
         """db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
@@ -526,7 +526,7 @@ if __name__ == '__main__':
             print("tb energy (eV/atom) = ",tb_energy[i]-tb_min)
             print("rebo correction energy (eV/atom) = ",rebo_energy[i]-emprebo_min)
             print("\n")
-            average_distance = i #nn_dist[i]
+            average_distance = nn_dist[i]
             if nn_dist[i] > 1.5 or (dft_energy[i]-dft_min)>0.4:
                 continue
             if i==0:
@@ -545,7 +545,7 @@ if __name__ == '__main__':
         plt.ylabel("energy above ground state (eV/atom)")
         plt.title("Corrective Intralayer Potential for mLG, num kpoints = "+str(args.nkp))
         plt.legend()
-        plt.savefig("rebo_test.png")
+        plt.savefig("rebo_test_nkp"+str(nkp)+".png")
         plt.show()
 
 
