@@ -15,7 +15,7 @@ import sys
 def tb_fxn(i):
     nkp = 4
     k_points = np.ones((nkp,3))
-    #print("calculating index = ",i)
+    print("calculating index = ",i)
     n = 20
     ham = np.eye(n)*np.linalg.norm(k_points[i])
     #hamiltonian_gpu = cp.asarray(ham)
@@ -27,7 +27,8 @@ def tb_fxn(i):
     #eigenvalues_cpu = cp.asnumpy(eigenvalues)
     #eigenvectors_cpu = cp.asnumpy(eigenvectors)
     eigenvalues_cpu,eigenvectors_cpu = np.linalg.eigh(ham)
-    #print("diagonalized index = ",i)
+    print("diagonalized index = ",i)
+    sys.stdout.flush() 
     return eigenvalues_cpu,eigenvectors_cpu
 
 
@@ -49,47 +50,16 @@ class ParallelForceCalculator(Calculator):
         # For this example, calculate random forces.
         print("before tb calc ",world.rank)
         forces_k,energy_k = self.run_tb(len(atoms))
-        #MPI.COMM_WORLD.barrier()
-        #energy_k = world.comm.gather(energy_k,root=0)
-        #forces_k = world.comm.gather(forces_k,root=0)
-        # Communicate forces across processes
-        if self.size > 1:
-            print("gathering ",self.rank)
-            forces_k = world.comm.gather(forces_k, root=0)
-            energy_k = world.comm.gather(energy_k,root=0)
-        else:
-            print("gathering ",self.rank)
-            forces_k = [forces_k]
-            energy_k = energy_k
-        
-        #print("after tb calc ",world.rank)
-        MPI.COMM_WORLD.barrier()
-        if world.rank == 0:
-
-            # If you're on the root process, set the results in the atoms object.
-            potential_energy = np.sum(energy_k)
-            forces = np.sum(forces_k, axis=0)
-            #self.results = {'energy': potential_energy, 'forces': forces, 'potential_energy':potential_energy}
-            #print("rank 0 ",forces)
-
-        else:
-            potential_energy=None
-            forces = None
-
-        MPI.COMM_WORLD.barrier()
-        #everything works up to here
-        print("broadcasting rank ",self.rank)
-        forces = MPI.COMM_WORLD.bcast(forces,root=0)
-        potential_energy = MPI.COMM_WORLD.bcast(potential_energy,root=0)
-        #print(type(forces))
+        forces = np.mean(forces_k,axis=1)
+        potential_energy = np.mean(energy_k)
         atoms.arrays['forces'] = forces
         atoms.arrays['energy'] = potential_energy
         atoms.arrays['potential_energy'] = potential_energy
         self.results['forces'] = forces
         self.results['potential_energy'] = potential_energy
         self.results['energy'] = potential_energy
-        print("tight binding finished")
-        world.comm.barrier()
+        #world.comm.barrier()
+        exit()
     
     def calculate_properties(self, atoms, results):
         potential_energy = np.sum([result['energy'] for result in results])
@@ -97,11 +67,12 @@ class ParallelForceCalculator(Calculator):
         return {'energy': potential_energy, 'forces': forces,'potential_energy':potential_energy}
 
     def run_tb(self,n):
+        print("running tight binding ... \n\n\n\n")
         number_of_cpu = joblib.cpu_count()
         #kind = np.array(range(self.nkp))
         nkp = 4
         data = np.arange(nkp)
-        local_data = data[world.rank::world.comm.size]
+        local_data = data #[world.rank::world.comm.size]
         output = Parallel(n_jobs=nkp)(delayed(tb_fxn)(i) for i in local_data)
         #band_data = comm.gather(output, root=0)
         #eigvals = np.zeros((20,nkp))
