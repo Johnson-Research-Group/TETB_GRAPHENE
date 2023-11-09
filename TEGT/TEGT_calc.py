@@ -55,6 +55,9 @@ class TEGT_Calc(Calculator):
         """
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
         self.device_num = device_num
         self.device_type = device_type
         self.repo_root = os.path.join("/".join(TEGT.__file__.split("/")[:-1]))
@@ -206,18 +209,13 @@ class TEGT_Calc(Calculator):
             #e,f = tb_fxn(i)
             tb_energy += output[i][0]
             tb_forces += output[i][1]"""
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-        comm.bcast(self.nkp, root=0)
+        
+        #self.comm.bcast(self.nkp, root=0)
         indices = np.arange(self.nkp)
-        print(self.nkp,indices)
         #this works across multiple nodes
-        local_indices = indices[rank::comm.size]
-        print(rank,comm.size,local_indices)
+        local_indices = indices[self.rank::self.comm.size]
         output = Parallel(n_jobs=len(local_indices))(delayed(tb_fxn)(i) for i in local_indices)
-        print("output length = ",len(output))
         for i in range(len(local_indices)):
-            #e,f = tb_fxn(i)
             tb_energy += output[i][0]
             tb_forces += output[i][1]
         return tb_energy.real, tb_forces.real
@@ -241,31 +239,42 @@ class TEGT_Calc(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        if MPI.COMM_WORLD.rank == 0:
-            self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
-        #else:
-        #run lammps part first then run latte part. Sum the two
         if self.use_tb:
-            tb_Energy,tb_forces = self.run_tight_binding(atoms)
-            print("tb passed")
-            all_tbforces = MPI.COMM_WORLD.gather(tb_forces, root=0)
-            all_tbEnergy = MPI.COMM_WORLD.gather(tb_Energy,root=0)
-            MPI.COMM_WORLD.barrier()
-            if MPI.COMM_WORLD.rank == 0:
-                self.tb_forces = np.sum(all_tbforces, axis=0)/self.nkp
-                self.tb_Energy = np.sum(all_tbEnergy)/self.nkp
-                self.results['forces'] = self.Lammps_forces + self.tb_forces 
-                self.results['potential_energy'] = self.Lammps_potential_energy + self.tb_Energy
-                self.results['energy'] = self.Lammps_tot_energy + self.tb_Energy
-                MPI.COMM_WORLD.bcast(self.results,root=0)
+            tb_Energy_k,tb_forces_k = self.run_tight_binding(atoms)
+            if self.size > 1:
+                tb_forces_k = self.comm.gather(tb_forces_k, root=0)
+                tb_Energy_k = self.comm.gather(tb_Energy_k,root=0)
+            else:
+                tb_forces_k = [tb_forces_k]
+            self.comm.barrier()
+            if self.rank == 0:
+                self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
+                self.tb_forces = np.sum(tb_forces_k, axis=0)/self.nkp
+                self.tb_Energy = np.sum(tb_Energy_k)/self.nkp
+                forces = self.Lammps_forces + self.tb_forces 
+                potential_energy = self.Lammps_potential_energy + self.tb_Energy
+            else:
+                potential_energy = None
+                forces = None
+
+            self.comm.barrier()
+            forces = self.comm.bcast(forces,root=0)
+            potential_energy = self.comm.bcast(potential_energy,root=0)
+            self.results['forces'] = forces
+            self.results['potential_energy'] = potential_energy
+            self.results['energy'] = potential_energy
+            self.comm.barrier()
             
         else:
-            self.results['forces'] = self.Lammps_forces
-            self.results['potential_energy'] = self.Lammps_potential_energy
-            self.results['energy'] = self.Lammps_tot_energy
+            if self.rank == 0:
+                self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
+                self.results['forces'] = self.Lammps_forces
+                self.results['potential_energy'] = self.Lammps_potential_energy
+                self.results['energy'] = self.Lammps_tot_energy
+            else:
+                print("run dynamics in serial for classical potentials")
+                exit()
                 
-            #atoms.calc.forces = self.forces
-            #atoms.calc.potential_energy = self.potential_energy
         
     def run(self,atoms):
         self.calculate(atoms)
