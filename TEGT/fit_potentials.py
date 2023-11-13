@@ -283,7 +283,7 @@ if __name__ == '__main__':
     if args.gendata=="True" and args.type=="intralayer":
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
         print("assembling intralayer database")
-        db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
+        #db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         file_list = glob.glob("../../tBLG_DFT/grapheneCalc*",recursive=True)
         low_energy_dict={"total_energy":[],"atoms":[],"rebo_energy":[]}
         for f in file_list:
