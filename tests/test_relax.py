@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import subprocess
 import os
 import lammps_logfile
-
+from mpi4py import MPI
 def get_atom_pairs(n,a):
     L=n*a+10
     sym=""
@@ -85,17 +85,17 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
    
 if __name__=="__main__":
     test_tbforces=False
-    test_tbenergy=False
+    test_tbenergy=True
     test_lammps=False
     test_bands=False
-    test_relaxation=True
+    test_relaxation=False
     test_scaling=False
     theta = 21.78
     
     
     model_dict = dict({"tight binding parameters":"popov", 
                           "basis":"pz",
-                          "kmesh":(4,4,1),
+                          "kmesh":(15,15,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -108,7 +108,7 @@ if __name__=="__main__":
         n_ = np.arange(2,4,1)
         n=3
         #a = 2.46
-        for i,a in enumerate(a_):
+        """for i,a in enumerate(a_):
             for j,n in enumerate(n_):
                 #atoms = get_stack_atoms(n,a)
                 atoms = get_atom_pairs(n,a)
@@ -124,7 +124,7 @@ if __name__=="__main__":
                 print("error = ",np.mean((tb_forces_fd[:,0]-tb_forces[:,0])))
                 print("ratio x_00= ",tb_forces_fd[0,0]/tb_forces[0,0])
                 print("ratio y_00= ", tb_forces_fd[0,1]/tb_forces[0,1])
-            
+        """ 
         #exit()
         #test forces
         atoms = get_twist_geom(theta,3.35)
@@ -199,7 +199,7 @@ if __name__=="__main__":
             plt.legend()
             plt.savefig("layer_sep_energies.png")
             plt.clf()
-        
+       
         print("RMSE latte, julia tight binding energy = ",np.linalg.norm(
             (julia_energies_sep-julia_energies_sep[-1])-(latte_energies_sep-latte_energies_sep[-1])))
         print("difference in energies at d=3.44, = ",(julia_energies_sep[2]-julia_energies_sep[-1])
@@ -230,7 +230,7 @@ if __name__=="__main__":
         atoms = get_twist_geom(theta,3.35)
         atoms.calc = calc_obj
         calc_folder = "theta_21_78"
-        if not os.path.exists(calc_folder):
+        if not os.path.exists(calc_folder) and MPI.COMM_WORLD.rank==0:
             os.mkdir(calc_folder)
         #energy = atoms.get_potential_energy()
         dyn = FIRE(atoms,

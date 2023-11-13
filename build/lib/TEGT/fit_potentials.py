@@ -160,22 +160,32 @@ class fit_potentials_tblg:
     def objective(self,params):
         energy = []
         rms=[]
-        E0 = params[-1]
+        fit_energy = []
+        #E0 = params[-1]
+        self.write_potential(params,self.potential_file)
         for row in self.db.select():
     
             atoms = self.db.get_atoms(id = row.id)
-            self.write_potential(params[:-1],self.potential_file)
             atoms.calc = self.calc
             lammps_forces,lammps_pe,tote = self.calc.run_lammps(atoms)
-            e = (lammps_pe)/len(atoms) + row.data.tb_energy * self.tb_weight + E0 #energy per atom
+            e = (lammps_pe)/len(atoms) + row.data.tb_energy * self.tb_weight #+ E0 #energy per atom
             energy.append(e)
-            tmp_rms = (e-(row.data.total_energy))
-            if self.fit_forces:
-                total_forces = lammps_forces + row.data.tb_forces
-                tmp_rms += np.linalg.norm(row.data.forces - total_forces)
-            rms.append(tmp_rms) #*sigma[i])
-        
-        rms = np.linalg.norm(rms)
+            fit_energy.append(row.data.total_energy)
+            pos = atoms.positions
+            distances = distance.cdist(pos, pos)
+            np.fill_diagonal(distances, np.inf)
+            min_distances = np.min(distances, axis=1)
+            average_distance = np.mean(min_distances)
+            if average_distance>1.6:
+                continue
+            #tmp_rms = (e-(row.data.total_energy))
+            #if self.fit_forces:
+            #    total_forces = lammps_forces + row.data.tb_forces
+            #    tmp_rms += np.linalg.norm(row.data.forces - total_forces)
+            #rms.append(tmp_rms) #*sigma[i])
+        energy = np.array(energy) - np.min(energy)
+        fit_energy = np.array(fit_energy) - np.min(fit_energy) 
+        rms = np.linalg.norm(energy-fit_energy)
         wp = [str(p) for p in params]
         wp = " ".join(wp)
         with open(os.path.join(self.calc.output,self.output+"_rms.txt"),"a+") as f:
@@ -264,7 +274,7 @@ if __name__ == '__main__':
         E0 = -154
         p0= [4.728912880179687, 32.40993806452906, -20.42597835994438,
              17.187123897218854, -23.370339868938927, 3.150121192047732,
-             1.6724670937654809 ,13.646628785353208, 0.7907544823937784,E0]
+             1.6724670937654809 ,13.646628785353208, 0.7907544823937784]
         potential = "KC inspired"
         fitting_obj = fit_potentials_tblg(calc_obj, db, potential,optimizer_type=args.optimizer_type)
         pfinal = fitting_obj.fit(p0)
@@ -299,13 +309,13 @@ if __name__ == '__main__':
             if (total_energy - ground_state) < erange:
                 n_include +=1
                 a.symbols = a.get_global_number_of_atoms() * "B"
-                #print(n_include, " energy above gs = ",(total_energy - ground_state)) #/len(a))
-                try:
-                    tb_energy,tb_forces = calc_obj.run_tight_binding(a)
-                    db.write(a,data={"total_energy":total_energy/len(a),'tb_forces':tb_forces,'tb_energy':tb_energy/len(a)})
-                except:
-                    print("failed Tight Binding")
-                    continue
+                print(n_include, " energy (eV/atom) above gs = ",(total_energy - ground_state)/len(a))
+                #try:
+                tb_energy,tb_forces = calc_obj.run_tight_binding(a)
+                db.write(a,data={"total_energy":total_energy/len(a),'tb_forces':tb_forces,'tb_energy':tb_energy/len(a)})
+                #except:
+                #    print("failed Tight Binding")
+                #    continue
 
     if args.type=="intralayer" and args.fit=="True":
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
@@ -313,15 +323,15 @@ if __name__ == '__main__':
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
         #Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , BIJc_CC3, Beta_CC1, Beta_CC2, Beta_CC3
-        p0 = [0.9181327615275936, -3.375455692650972, -0.03311862094050137, 218.01635083733936, 14.323060862149113, 27.875638087389277, 0.6279369701403397, 1.5531053197790619, 2.586519038068026,  E0]
+        p0 = [0.9181327615275936, -3.375455692650972, -0.03311862094050137, 218.01635083733936, 14.323060862149113, 27.875638087389277, 0.6279369701403397, 1.5531053197790619, 2.586519038068026]
         #start with original rebo terms and tb energy weighted to zero. then slowly add weight to tb energy
         p0 = [0.3134602960833, 4.7465390606595, 10953.544162170,\
              12388.79197798, 17.56740646509, 30.71493208065,\
-             4.7204523127 , 1.4332132499, 1.3826912506, E0]
-        p0 = [0.13143549752672556, 2.9387383594009933, 22397.400294010637,\
-              16407.310867112505, 16.92920979407133, 31.491197302429086,\
-              2.4939622401934054, 1.5831728110690728, 0.1168891525376102, 0.0011987052887045936]
-        p0_bounds = [(0,100),(0,100),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(-np.inf,np.inf)]
+             4.7204523127 , 1.4332132499, 1.3826912506]
+        #p0 = [0.13143549752672556, 2.9387383594009933, 22397.400294010637,\
+        #      16407.310867112505, 16.92920979407133, 31.491197302429086,\
+        #      2.4939622401934054, 1.5831728110690728, 0.1168891525376102, 0.0011987052887045936]
+        p0_bounds = [(0,100),(0,100),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf),(0,np.inf)]
         potential = "rebo"
         fitting_obj = fit_potentials_tblg(calc_obj, db, potential,optimizer_type=args.optimizer_type)
         pfinal = fitting_obj.fit(p0,bounds=p0_bounds)
@@ -395,7 +405,7 @@ if __name__ == '__main__':
                           })
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
-        """a = 2.462
+        a = 2.462
         lat_con_list = np.sqrt(3) * np.array([1.197813121272366,1.212127236580517,1.2288270377733599,1.2479125248508947,\
                                 1.274155069582505,1.3027833001988072,1.3433399602385685,1.4053677932405566,\
                                 1.4745526838966203,1.5294234592445326,1.5795228628230618])
@@ -406,7 +416,7 @@ if __name__ == '__main__':
         dft_energy = np.array([-5.62588911,-6.226154186,-6.804241219,-7.337927988,-7.938413961,\
                                 -8.472277446,-8.961917385,-9.251954937,-9.119902805,-8.832030042,-8.432957809])
 
-        for i,lat_con in enumerate(lat_con_list):
+        """for i,lat_con in enumerate(lat_con_list):
             
             atoms = get_monolayer_atoms(0,0,a=lat_con)
             print("a = ",lat_con," natoms = ",len(atoms))
@@ -417,7 +427,7 @@ if __name__ == '__main__':
             #lammps_forces,lammps_pe,tote = calc_obj.run_lammps(atoms)
             #rebo_energy[i] = total_energy/len(atoms)
             #total_energy = tote + tb_energy_geom
-            lat_con_energy[i] = total_energy/len(atoms)
+            lat_con_energy[i] = total_energy
         fit_min_ind = np.argmin(lat_con_energy)
         initial_guess = (1.0, 1.0, 1.0)  # Initial parameter guess
         rebo_params, covariance = curve_fit(quadratic_function, lat_con_list, lat_con_energy, p0=initial_guess)
@@ -442,7 +452,7 @@ if __name__ == '__main__':
         plt.xlabel("nearest neighbor distance (angstroms)")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.legend()
-        plt.savefig("rebo_lat_con.png")
+        plt.savefig("rebo_lat_con_nkp"+str(nkp)+".png")
         plt.show()
         plt.clf()"""
         
@@ -477,16 +487,22 @@ if __name__ == '__main__':
                 dft_min = row.data.total_energy
         tegtb_energy = []
         dft_energy = []   
-        nn_dist = [] 
+        nn_dist = []
+        tb_energy = []
+        rebo_energy = [] 
         for row in db.select():
     
             atoms = db.get_atoms(id = row.id)
             atoms.calc = calc_obj
             lammps_forces,lammps_pe,tote = calc_obj.run_lammps(atoms)
-            e = (lammps_pe)/len(atoms) + row.data.tb_energy #energy per atom
+            e = (tote)/len(atoms) + row.data.tb_energy #energy per atom
+            print("lammps energy = ",tote/len(atoms)," (eV/atom)")
+            print("tb energy = ",row.data.tb_energy," (eV/atom)")
             #e = atoms.get_potential_energy()/len(atoms)
             tegtb_energy.append(e)
             dft_energy.append(row.data.total_energy)
+            tb_energy.append(row.data.tb_energy)
+            rebo_energy.append(tote/len(atoms))
             tmp_rms = (e-(row.data.total_energy))
             rms.append(tmp_rms)
             nconfig+=1
@@ -498,12 +514,21 @@ if __name__ == '__main__':
             average_distance = np.mean(min_distances)
             nn_dist.append(average_distance)
         dft_min = np.min(dft_energy)
-        rebo_min = np.min(tegtb_energy)
-        print(rebo_min)
+        rebo_min_ind = np.argmin(tegtb_energy)
+        rebo_min = tegtb_energy[rebo_min_ind]
+        tb_min = tb_energy[rebo_min_ind]
+        emprebo_min = rebo_energy[rebo_min_ind]
         for i,e in enumerate(tegtb_energy):
             line = np.linspace(0,1,10)
             ediff_line = line*((dft_energy[i]-dft_min) - (e-rebo_min)) + (e-rebo_min)
+            print("dft energy (eV/atom) = ",dft_energy[i]-dft_min)
+            print("tegtb energy (eV/atom) = ",e-rebo_min)
+            print("tb energy (eV/atom) = ",tb_energy[i]-tb_min)
+            print("rebo correction energy (eV/atom) = ",rebo_energy[i]-emprebo_min)
+            print("\n")
             average_distance = nn_dist[i]
+            if nn_dist[i] > 1.5 or (dft_energy[i]-dft_min)>0.4:
+                continue
             if i==0:
                 plt.scatter(average_distance,e-rebo_min,color="red",label="TEGT")
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue",label="DFT")
@@ -513,13 +538,14 @@ if __name__ == '__main__':
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue")
                 plt.plot(average_distance*np.ones_like(line),ediff_line,color="black")
         
-        rms = np.linalg.norm(rms)/nconfig
+        rms = np.mean(np.abs(np.array(tegtb_energy)-rebo_min-(np.array(dft_energy)-dft_min)))
+        
         print("average difference in energy across all configurations = "+str(rms)+" (eV/atom)")
         plt.xlabel("average nearest neighbor distance (angstroms)")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.title("Corrective Intralayer Potential for mLG, num kpoints = "+str(args.nkp))
         plt.legend()
-        plt.savefig("rebo_test.png")
+        plt.savefig("rebo_test_nkp"+str(nkp)+".png")
         plt.show()
 
 
