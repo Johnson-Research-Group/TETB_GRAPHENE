@@ -28,7 +28,6 @@ from joblib import Parallel, delayed
 from mpi4py import MPI
 import TEGT
 from TEGT_TB_cupy import *
-from ase.parallel import parallel_function
 
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
@@ -198,7 +197,7 @@ class TEGT_Calc(Calculator):
     def get_band_structure(self,atoms,kpoints):
         nkp = np.shape(kpoints)[0]
         tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
-                                 kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
+                                    kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         evals = np.zeros((atoms.get_global_number_of_atoms(),nkp))
         evecs = np.zeros((atoms.get_global_number_of_atoms(),atoms.get_global_number_of_atoms(),nkp),dtype=complex) 
         number_of_cpu = joblib.cpu_count()
@@ -209,7 +208,7 @@ class TEGT_Calc(Calculator):
 
         return evals,evecs
 
-   def calculate(self, atoms, properties=None, system_changes=all_changes):
+    def calculate(self, atoms, properties=None, system_changes=all_changes):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
