@@ -209,8 +209,7 @@ class TEGT_Calc(Calculator):
 
         return evals,evecs
 
-   def calculate(self, atoms, properties=None,
-                  system_changes=all_changes):
+   def calculate(self, atoms, properties=None, system_changes=all_changes):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)

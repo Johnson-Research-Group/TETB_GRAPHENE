@@ -95,22 +95,6 @@ function gen_ham(atom_positions,atom_types,cell,kpoint,params)
     return Ham
 end
 
-function get_helem_fxn(r2,cell,typei,typen,params,kpoint)
-    #function to get hamiltonian matrix element, write function just in terms of r1 
-    #so that we can take derivative wrt to r1
-    function helem(r1)
-	    disp = wrap_disp(r1,r2, cell)
-	    dist = norm(disp)
-        #just in case neighbor list cutoff is larger than hopping cutoff
-        if dist < params[typei][typen]["rcut"] && dist > 0.5
-            hop = params[typei][typen]["hopping"](disp)
-            return hop
-        else
-            return 0
-        end
-    end
-    return helem
-end
 
 function diagH(matrix,device_type,device_num)
     if device_type=="gpu"
@@ -156,6 +140,23 @@ function get_hellman_feynman_fd(atom_positions,neighbor_list,atom_types,
         end
     end
     return Forces
+end
+
+function get_helem_fxn(r2,cell,typei,typen,params,kpoint)
+    #function to get hamiltonian matrix element, write function just in terms of r1 
+    #so that we can take derivative wrt to r1
+    function helem(r1)
+	    disp = wrap_disp(r1,r2, cell)
+	    dist = norm(disp)
+        #just in case neighbor list cutoff is larger than hopping cutoff
+        if dist < params[typei][typen]["rcut"] && dist > 0.5
+            hop = params[typei][typen]["hopping"](disp)
+            return hop
+        else
+            return 0
+        end
+    end
+    return helem
 end
 
 function get_hellman_feynman(atom_positions,neighbor_list,atom_types,

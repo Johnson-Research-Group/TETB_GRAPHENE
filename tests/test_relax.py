@@ -5,7 +5,7 @@ Created on Mon Sep 11 16:46:47 2023
 @author: danpa
 """
 
-from TEGT import TEGT_calc
+from TEGT_GPU import TEGT_calc
 from ase import Atoms
 from ase.optimize import FIRE
 import flatgraphene as fg
@@ -87,8 +87,8 @@ if __name__=="__main__":
     test_tbforces=False
     test_tbenergy=False
     test_lammps=False
-    test_bands=False
-    test_relaxation=True
+    test_bands=True
+    test_relaxation=False
     test_scaling=False
     theta = 21.78
     

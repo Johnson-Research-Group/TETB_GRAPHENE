@@ -1,0 +1,14 @@
+MANIFEST.in
+setup.py
+TEGT_GPU/TB_Utils_cupy.py
+TEGT_GPU/TB_parameters_cupy.py
+TEGT_GPU/TEGT_TB_cupy.py
+TEGT_GPU/TEGT_calc.py
+TEGT_GPU/__init__.py
+TEGT_GPU/submit_fit_potential.py
+TEGT_GPU.egg-info/PKG-INFO
+TEGT_GPU.egg-info/SOURCES.txt
+TEGT_GPU.egg-info/dependency_links.txt
+TEGT_GPU.egg-info/top_level.txt
+tests/test_gpu.py
+tests/test_relax.py
