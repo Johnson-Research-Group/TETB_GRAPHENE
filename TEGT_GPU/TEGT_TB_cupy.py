@@ -36,11 +36,11 @@ def get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params_str,rcut 
     Forces = cp.zeros((natoms, 3), dtype=cp.complex64)
 
     for k in range(nkp):
-        Ham = gen_ham_ovrlp(atom_positions, atom_types, cell, kpoints[k,:], params)
+        Ham,i,j, di, dj, phase = gen_ham_ovrlp(atom_positions, atom_types, cell, kpoints[k,:], params)
         eigvalues, eigvectors = cp.linalg.eigh(Ham)
         nocc = int(natoms / 2)
         Energy += 2 * cp.sum(eigvalues[:nocc])
-        Forces += get_hellman_feynman(atom_positions,  atom_types, cell, eigvectors, kpoints[k,:], params)
+        Forces += get_hellman_feynman(atom_positions,  atom_types, cell, eigvectors, kpoints[k,:], params,i,j, di, dj, phase)
 
     return cp.asnumpy(Energy), cp.asnumpy(Forces)
 
