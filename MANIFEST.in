@@ -1,7 +1,3 @@
-include TEGT/TB_Utils.jl
-include TEGT/TEGT_TB.jl
-include TEGT/tb_parameters.jl
-
 include parameters/KC_insp.txt
 include parameters/KC_insp_pz.txt
 include parameters/KC_insp_pz.txt_nkp225

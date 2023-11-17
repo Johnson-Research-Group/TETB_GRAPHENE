@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np 
-from TB_Utils_cupy import *
-from TB_parameters_cupy import *
+from TEGT_GPU.TB_Utils_cupy import *
+from TEGT_GPU.TB_parameters_cupy import *
 
 def get_recip_cell(cell):
     a1 = cell[:, 0]
@@ -18,7 +18,7 @@ def get_recip_cell(cell):
 
 def get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params_str,rcut = 10):
     atom_positions = cp.asarray(atom_positions)
-    atom_types = cp.asarray(atom_types)
+    atom_types = np.array(atom_types)
     cell = cp.asarray(cell)
     kpoints = cp.asarray(kpoints)
 
@@ -46,7 +46,7 @@ def get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,params_str,rcut 
 
 def get_tb_forces_energy_fd(atom_positions, atom_types, cell, kpoints, params_str, rcut=10):
     atom_positions = cp.asarray(atom_positions)
-    atom_types = cp.asarray(atom_types)
+    atom_types = np.array(atom_types)
     cell = cp.asarray(cell)
     kpoints = cp.asarray(kpoints)
     params = get_param_dict(params_str)
@@ -61,25 +61,24 @@ def get_tb_forces_energy_fd(atom_positions, atom_types, cell, kpoints, params_st
     Forces = cp.zeros((natoms, 3), dtype=cp.complex64)
     
     for k in range(nkp):
-        Ham = gen_ham_ovrlp(atom_positions,  atom_types, cell, kpoints[k], params)
+        Ham = gen_ham_ovrlp(atom_positions,  mol_id, cell, kpoints[k], params)
         eigvalues, eigvectors = cp.linalg.eigh(Ham)
         nocc = int(natoms / 2)
         Energy += 2 * cp.sum(eigvalues[:nocc])
-        Forces += get_hellman_feynman_fd(atom_positions, atom_types, cell, eigvectors, kpoints[k], params)
+        Forces += get_hellman_feynman_fd(atom_positions, mol_id, cell, eigvectors, kpoints[k], params)
     
     return cp.asnumpy(Energy), cp.asnumpy(Forces)
 
-def get_band_structure(atom_positions, atom_types, cell, kpoints, params_str, rcut=10):
+def calc_band_structure(atom_positions, atom_types, cell, kpoints, params_str, rcut=10):
     atom_positions = cp.asarray(atom_positions)
-    atom_types = cp.asarray(atom_types)
     cell = cp.asarray(cell)
     kpoints = cp.asarray(kpoints)
 
     params = get_param_dict(params_str)
     recip_cell = get_recip_cell(cell)
     if kpoints.ndim == 1:
-        kpoints = cp.reshape(kpoints, (1, 3))
-    kpoints = kpoints * recip_cell
+        kpoints = cp.reshape(kpoints, (1,3))
+    kpoints = kpoints @ recip_cell.T
     natoms = atom_positions.shape[0]
     nkp = kpoints.shape[0]
     evals = cp.zeros((natoms, nkp))
@@ -90,7 +89,6 @@ def get_band_structure(atom_positions, atom_types, cell, kpoints, params_str, rc
         eigvalues, eigvectors = cp.linalg.eigh(Ham)
         evals[:, k] = eigvalues
         evecs[:, :, k] = eigvectors
-    
     return cp.asnumpy(evals), cp.asnumpy(evecs)
 
 def get_param_dict(params_str):

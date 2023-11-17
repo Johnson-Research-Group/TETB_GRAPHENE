@@ -26,9 +26,8 @@ from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
 from mpi4py import MPI
-import TEGT
-from TEGT_TB_cupy import *
-from ase.parallel import parallel_function
+import TEGT_GPU
+from TEGT_GPU.TEGT_TB_cupy import *
 
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
@@ -58,7 +57,7 @@ class TEGT_Calc(Calculator):
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
 
-        self.repo_root = os.path.join("/".join(TEGT.__file__.split("/")[:-1]))
+        self.repo_root = os.path.join("/".join(TEGT_GPU.__file__.split("/")[:-1]))
         self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
                      "Rebo":"CH.rebo",
@@ -158,28 +157,28 @@ class TEGT_Calc(Calculator):
     def get_tb_fxn(self,positions,atom_types,cell,kpoints,tbparams,calc_type="force"):
         if calc_type=="force":
             def func(i):
-                #get energy and force at a single kpoint from julia
+                #get energy and force at a single kpoint from gpu
                 kpoint = kpoints[i,:]
                 energy,force = get_tb_forces_energy(positions,atom_types,cell,kpoint,tbparams)
                 return energy,force
         elif calc_type=="force_fd":
             def func(i):
-                #get energy and force at a single kpoint from julia
+                #get energy and force at a single kpoint from gpu
                 kpoint = kpoints[i,:]
                 energy,force = get_tb_forces_energy_fd(positions,atom_types,cell,kpoint,tbparams)
                 return energy,force
         elif calc_type=="bands":
             def func(i):
-                #get energy and force at a single kpoint from julia
+                #get energy and force at a single kpoint from gpu
                 kpoint = kpoints[i,:]
-                evals,evecs = get_band_structure(positions,atom_types,cell,kpoint,tbparams)
+                evals, evecs = calc_band_structure(positions, atom_types, cell, kpoint, tbparams)
                 return evals,evecs
             
         return func
     
     def run_tight_binding(self,atoms,force_type="force"):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
+        tb_fxn = self.get_tb_fxn(atoms.positions,np.array(atoms.get_chemical_symbols()),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
 
@@ -198,18 +197,18 @@ class TEGT_Calc(Calculator):
     def get_band_structure(self,atoms,kpoints):
         nkp = np.shape(kpoints)[0]
         tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
-                                 kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
+                                    kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         evals = np.zeros((atoms.get_global_number_of_atoms(),nkp))
         evecs = np.zeros((atoms.get_global_number_of_atoms(),atoms.get_global_number_of_atoms(),nkp),dtype=complex) 
-        number_of_cpu = joblib.cpu_count()
-        output = Parallel(n_jobs=nkp)(delayed(tb_fxn)(i) for i in range(nkp))
+        #output = Parallel(n_jobs=nkp)(delayed(tb_fxn)(i) for i in range(nkp))
         for i in range(nkp):
-            evals[:,i] = np.squeeze(output[i][0])
-            evecs[:,:,i] = np.squeeze(output[i][1])
+            eval_tmp,evec_tmp = tb_fxn(i)
+            evals[:,i] = np.squeeze(eval_tmp)
+            evecs[:,:,i] = np.squeeze(evec_tmp)
 
         return evals,evecs
 
-   def calculate(self, atoms, properties=None, system_changes=all_changes):
+    def calculate(self, atoms, properties=None, system_changes=all_changes):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)

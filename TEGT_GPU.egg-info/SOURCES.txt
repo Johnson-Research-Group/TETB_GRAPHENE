@@ -12,3 +12,4 @@ TEGT_GPU.egg-info/dependency_links.txt
 TEGT_GPU.egg-info/top_level.txt
 tests/test_gpu.py
 tests/test_relax.py
+tests/test_wrap_disp.py

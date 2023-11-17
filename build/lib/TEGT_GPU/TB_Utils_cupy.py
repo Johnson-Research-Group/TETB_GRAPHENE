@@ -1,30 +1,64 @@
 import cupy as cp
+import numpy as np
 import smallpebble as sp
-
+import matplotlib.pyplot as plt
 def wrap_disp(r1, r2, cell):
     """Wrap positions to unit cell. 3D"""
-    pbc = cp.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1],])
-    pbc = cp.transpose(pbc)
-    r2_replicated = r2 + cp.dot(pbc, cell.T) - r1
-    return r2_replicated
+    d = 1000.0
+    drij = cp.zeros_like(r1)
+
+    for i in [-1, 0, 1]:
+        for j in [-1, 0, 1]:
+            for k in [-1, 0, 1]:
+                pbc = cp.array([i, j, k])
+
+                RIJ = r2 + cp.dot(pbc, cell) - r1
+                norm_RIJ = cp.linalg.norm(RIJ, axis=1)
+
+                mask = norm_RIJ < d
+                d = cp.where(mask, norm_RIJ, d)
+                drij = cp.where(mask[:, None], RIJ, drij)
+
+    return drij
+
 
 def gen_ham_ovrlp(atom_positions, atom_types, cell, kpoint, params):
     natoms = atom_positions.shape[0]
     Ham = cp.zeros((natoms, natoms), dtype=cp.complex64)
-    Overlap = cp.zeros((natoms, natoms), dtype=cp.complex64)
-
+    atom_types = np.array(atom_types)
+    #upper triangle indices
     i_indices, j_indices = cp.triu_indices(natoms, k=0)
     disp = wrap_disp(atom_positions[i_indices], atom_positions[j_indices], cell)
     dist = cp.linalg.norm(disp, axis=1)
+    self_energies = cp.ones(natoms)
+    #get the different atomic species in system
+    atom_types_list = set(atom_types)
+    # Use atom_types directly for indexing
+    for i,typei in enumerate(atom_types_list):
+        for j,typej in enumerate(atom_types_list):
+            if j<i:
+                continue
+            hop_func = params[typei][typej]["hopping"]
+            rcut = params[typei][typej]["rcut"]
+            print(typei,typej) 
+            valid_indices = (dist < rcut) & (dist > 1)
+            valid_indices &= (i_indices != j_indices)
+            valid_indices &= cp.array(atom_types[i_indices.get()]==typei)
+            valid_indices &= cp.array(atom_types[j_indices.get()]==typej)
+
+            phase = cp.exp(1j * cp.dot(kpoint, disp[valid_indices].T))
+            Ham[i_indices[valid_indices], j_indices[valid_indices]] = hop_func(disp[valid_indices])*phase
+            Ham[j_indices[valid_indices], i_indices[valid_indices]] = hop_func(disp[valid_indices])*phase.conj()
+            if i==j:
+                self_energy = params[typei][typej]["self_energy"]
+                valid_indices = cp.array(atom_types[i_indices.get()]==typei)
+                Ham[i_indices[valid_indices],i_indices[valid_indices]] = self_energy
     
-    valid_indices = (dist < params[atom_types[i_indices]][atom_types[j_indices]]["rcut"]) & (dist > 1)
-    valid_indices &= (i_indices != j_indices)
-
-    phase = cp.exp(1j * cp.dot(kpoint, disp[valid_indices]))
-    Ham[i_indices[valid_indices], j_indices[valid_indices]] += params[atom_types[i_indices[valid_indices]]][atom_types[j_indices[valid_indices]]]["hopping"](disp[valid_indices]) * phase
-    cp.fill_diagonal(Ham, [params[atom_types[i]][atom_types[i]]["self_energy"] for i in range(natoms)])
-
-    return cp.hermitian(Ham)
+    plt.imshow(cp.asnumpy(Ham).real)
+    plt.colorbar()
+    plt.savefig("gpu_ham.png")
+    plt.clf()
+    return Ham
 
 def get_helem_fxn(r2, cell, typei, typen, params):
     def helem(r1):
@@ -44,7 +78,6 @@ def get_hellman_feynman_fd(atom_positions, atom_types, cell, eigvec, kpoint, par
     nocc = len(eigvec) // 2
     Forces = cp.zeros((natoms, 3), dtype=cp.float64)
     atom_positions_pert = cp.copy(atom_positions)
-
     for dir_ind in range(3):
         atom_positions_pert[:, dir_ind] += dr
         Ham = gen_ham_ovrlp(atom_positions_pert,  atom_types, cell, kpoint, params)
@@ -66,7 +99,6 @@ def get_hellman_feynman(atom_positions, atom_types, cell, eigvec, kpoint, params
     natoms = atom_positions.shape[0]
     nocc = cp.int(eigvec.shape[0] / 2)
     Force = cp.zeros((natoms, 3), dtype=cp.complex64)
-    
     i_indices, j_indices = cp.triu_indices(natoms, k=1)
     r1 = atom_positions[i_indices]
     r2 = atom_positions[j_indices]

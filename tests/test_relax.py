@@ -85,9 +85,9 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
    
 if __name__=="__main__":
     test_tbforces=False
-    test_tbenergy=False
+    test_tbenergy=True
     test_lammps=False
-    test_bands=True
+    test_bands=False
     test_relaxation=False
     test_scaling=False
     theta = 21.78
@@ -95,7 +95,7 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":"popov", 
                           "basis":"pz",
-                          "kmesh":(1,1,1),
+                          "kmesh":(15,15,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -213,13 +213,14 @@ if __name__=="__main__":
     if test_bands:
         # srun -num tasks nkp -gpu's per task 1 python test_relax.py ideally
         #test band structure
+        theta=21.79
         atoms = get_twist_geom(theta,3.35)
         Gamma = [0,   0,   0]
         K = [2/3,1/3,0]
         Kprime = [1/3,2/3,0]
         M = [1/2,0,0]
         sym_pts=[K,Gamma,M,Kprime]
-        nk=100
+        nk=40
         kdat = calc_obj.k_path(sym_pts,nk)
         kpoints = kdat[0]
         evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
