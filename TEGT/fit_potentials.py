@@ -183,6 +183,7 @@ class fit_potentials_tblg:
             #    total_forces = lammps_forces + row.data.tb_forces
             #    tmp_rms += np.linalg.norm(row.data.forces - total_forces)
             #rms.append(tmp_rms) #*sigma[i])
+        print(energy)
         energy = np.array(energy) - np.min(energy)
         fit_energy = np.array(fit_energy) - np.min(fit_energy) 
         rms = np.linalg.norm(energy-fit_energy)
@@ -230,6 +231,11 @@ class fit_potentials_tblg:
         return popt
     
 if __name__ == '__main__':
+    font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 22}
+
+    plt.rcParams.update({'font.size': 15})
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-m','--tbmodel',type=str,default='popov')
@@ -283,7 +289,7 @@ if __name__ == '__main__':
     if args.gendata=="True" and args.type=="intralayer":
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
         print("assembling intralayer database")
-        #db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
+        db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         file_list = glob.glob("../../tBLG_DFT/grapheneCalc*",recursive=True)
         low_energy_dict={"total_energy":[],"atoms":[],"rebo_energy":[]}
         for f in file_list:
@@ -341,8 +347,8 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
-                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225_final_version"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo"),
+                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_final_version"),
                           'output':args.output})
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
@@ -386,11 +392,11 @@ if __name__ == '__main__':
 
             plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " tegt",c=colors[i])
             plt.scatter(d_,np.array(energy_dis_qmc)-E0_qmc,label=stacking + " qmc",c=colors[i])
-        plt.xlabel("interlayer distance (Angstroms)")
-        plt.ylabel("interlayer energy (eV)")
-        plt.title("Corrective Interlayer Potential for BLG, num kpoints = "+str(args.nkp))
-        plt.legend()
-        plt.savefig("kc_insp_test.png")
+        plt.xlabel(r'Interlayer distance ($\AA$)')
+        plt.ylabel("Interlayer energy (eV)")
+        plt.title("Corrective Interlayer Potential\n num kpoints = "+str(args.nkp))
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.savefig("kc_insp_test"+str(args.nkp)+".png",bbox_inches='tight',dpi=100)
         plt.show()
 
         
@@ -398,9 +404,9 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225_final_version"),
+                          "intralayer potential":os.path.join("fit_popov_intralayer_nkp225","CH_pz.rebo_nkp225_final_version"),
                           #"intralayer potential":"Rebo",
-                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225"),
+                          "interlayer potential":os.path.join("fit_popov_intralayer_nkp225","KC_insp_pz.txt_nkp225"),
                           'output':args.output
                           })
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
@@ -518,6 +524,7 @@ if __name__ == '__main__':
         rebo_min = tegtb_energy[rebo_min_ind]
         tb_min = tb_energy[rebo_min_ind]
         emprebo_min = rebo_energy[rebo_min_ind]
+        add_labels=True
         for i,e in enumerate(tegtb_energy):
             line = np.linspace(0,1,10)
             ediff_line = line*((dft_energy[i]-dft_min) - (e-rebo_min)) + (e-rebo_min)
@@ -529,10 +536,11 @@ if __name__ == '__main__':
             average_distance = nn_dist[i]
             if nn_dist[i] > 1.5 or (dft_energy[i]-dft_min)>0.4:
                 continue
-            if i==0:
-                plt.scatter(average_distance,e-rebo_min,color="red",label="TEGT")
+            if add_labels:
+                plt.scatter(average_distance,e-rebo_min,color="red",label="TETB")
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue",label="DFT")
                 plt.plot(average_distance*np.ones_like(line),ediff_line,color="black")
+                add_labels=False
             else:
                 plt.scatter(average_distance,e-rebo_min,color="red")
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue")
@@ -541,11 +549,11 @@ if __name__ == '__main__':
         rms = np.mean(np.abs(np.array(tegtb_energy)-rebo_min-(np.array(dft_energy)-dft_min)))
         
         print("average difference in energy across all configurations = "+str(rms)+" (eV/atom)")
-        plt.xlabel("average nearest neighbor distance (angstroms)")
+        plt.xlabel(r'average nearest neighbor distance ($\AA$)')
         plt.ylabel("energy above ground state (eV/atom)")
-        plt.title("Corrective Intralayer Potential for mLG, num kpoints = "+str(args.nkp))
-        plt.legend()
-        plt.savefig("rebo_test_nkp"+str(nkp)+".png")
+        plt.title("Corrective Intralayer Potential\n num kpoints = "+str(args.nkp))
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.savefig("rebo_test_nkp"+str(args.nkp)+".png",bbox_inches='tight',dpi=100)
         plt.show()
 
 

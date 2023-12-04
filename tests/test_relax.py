@@ -87,6 +87,7 @@ if __name__=="__main__":
     test_tbforces=False
     test_tbenergy=True
     test_lammps=False
+    test_kpoints=False
     test_bands=False
     test_relaxation=False
     test_scaling=False
@@ -102,6 +103,25 @@ if __name__=="__main__":
     
     calc_obj = TEGT_calc.TEGT_Calc(model_dict)
     
+    if test_kpoints:
+        atoms = get_twist_geom(theta,3.35)
+        k_vary = np.arange(1,35,5)
+        k_energy = np.zeros_like(k_vary,dtype=np.float64)
+        for i,nk in enumerate(k_vary):
+            model_dict["kmesh"]=(nk,nk,1)
+            calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+            tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+            k_energy[i] = tb_energy
+        print(k_vary)
+        print(k_energy)
+        plt.plot(np.power(k_vary,2)[3:],k_energy[3:])
+        plt.title("kpoint convergence")
+        plt.xlabel("nkp")
+        plt.ylabel("energy (eV)")
+        plt.savefig("kpoint convergence")
+        plt.show()
+        plt.clf()
+
     if test_tbforces:
         #test forces pairwise
         a_ = np.linspace(2.2,2.6,3)
@@ -184,6 +204,7 @@ if __name__=="__main__":
         plt.show()
             
     if test_tbenergy:
+
         layer_sep = np.linspace(3,5,10)
         latte_energies_sep = np.array([-91.602691, -91.213895, -91.017339, -90.915491, -90.860638, -90.830305,-90.813764, -90.805065, -90.800582, -90.798475])
         julia_energies_sep = np.zeros(10)
@@ -230,8 +251,9 @@ if __name__=="__main__":
         atoms = get_twist_geom(theta,3.35)
         atoms.calc = calc_obj
         calc_folder = "theta_21_78"
-        if not os.path.exists(calc_folder) and MPI.COMM_WORLD.rank==0:
-            os.mkdir(calc_folder)
+        if MPI.COMM_WORLD.rank==0:
+            if not os.path.exists(calc_folder):
+                os.mkdir(calc_folder)
         #energy = atoms.get_potential_energy()
         dyn = FIRE(atoms,
                    trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),

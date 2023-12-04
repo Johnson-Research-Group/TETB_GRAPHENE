@@ -119,10 +119,10 @@ function diagH(matrix,device_type,device_num)
         #CuArrays.init(device)
         
         #gpu_matrix = CuArray(matrix)
-        gpu_matrix = CuSparseMatrixCSR(matrix)
-        eigenvalues, eigenvectors = eigen(gpu_matrix)
-        cpu_eigenvalues = Array(eigenvalues)
-        cpu_eigenvectors = Array(eigenvectors)
+	gpu_matrix = CUDA.fill(matrix)
+        eigenvalues, eigenvectors = CUDA.eigen(gpu_matrix)
+        cpu_eigenvalues = CUDA.to_host(eigenvalues)
+        cpu_eigenvectors = CUDA.to_host(eigenvectors)
         return cpu_eigenvalues,cpu_eigenvectors
 
     else

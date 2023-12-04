@@ -72,19 +72,21 @@ if __name__=="__main__":
                  '--mail-type':'ALL',
                  'modules':['anaconda']
         }
-    batch_options = batch_options_uiuc_cc
+    batch_options = batch_options_perlmutter
     tb_models = ["popov"]
-    nkp = [225]
+    nkp = [1] #,225]
     for t in tb_models:
         for k in nkp:
             executable = "python fit_potentials.py -m "+t+" -t interlayer -k "+str(k)
-            #submit_batch_file_perlmutter(executable,batch_options_perlmutter)
-            batch_options["--job-name"]="gamma_interlayer"
-            batch_options["--output"]= "gamma_interlayer.log"
+            batch_options["--job-name"]="nkp"+str(k)+"_interlayer"
+            batch_options["--output"]= "nkp"+str(k)+"_interlayer.log"
             #submit_batch_file_uiuc_cc(executable,batch_options)
+            submit_batch_file_perlmutter(executable,batch_options_perlmutter)
 
-            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k)+" -g True -oz tb_weight"
-            batch_options["--job-name"]="mesh225_intralayer"
-            batch_options["--output"]= "mesh225_intralayer.log"
-            #submit_batch_file_perlmutter(executable,batch_options)
-            submit_batch_file_uiuc_cc(executable,batch_options)
+
+            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k) #+" -g True"
+            batch_options["--job-name"]="mesh"+str(k)+"_intralayer"
+            batch_options["--output"]= "mesh"+str(k)+"_intralayer.log"
+            print(executable)
+            submit_batch_file_perlmutter(executable,batch_options)
+            #submit_batch_file_uiuc_cc(executable,batch_options)

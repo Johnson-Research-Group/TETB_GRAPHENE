@@ -122,15 +122,16 @@ class TEGT_Calc(Calculator):
         ######################## Potential defition ########################
         
         if ntypes ==2 and self.use_tb:
-            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo/sigma 3")
+            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo 3")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
-            L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
+            #L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
+            L.command("pair_coeff      * * airebo "+self.rebo_file+" C C")
         elif ntypes==2 and not self.use_tb:
             L.command("pair_style       hybrid/overlay kolmogorov/crespi/full 10.0 0 rebo")
             L.command("pair_coeff       * *   kolmogorov/crespi/full  "+self.kc_file+"   C C") # long-range
             L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
         else:
-            L.command("pair_style       airebo/sigma 3")
+            L.command("pair_style       airebo 3")
             L.command("pair_coeff      * * "+self.rebo_file+" C")
 
         ####################################################################
@@ -203,6 +204,7 @@ class TEGT_Calc(Calculator):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
         tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
+        print(self.nkp)
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
         
         number_of_cpu = joblib.cpu_count()
@@ -210,7 +212,8 @@ class TEGT_Calc(Calculator):
         indices = np.arange(self.nkp)
         #this works across multiple nodes
         local_indices = indices #[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
-        output = Parallel(n_jobs=len(local_indices))(delayed(tb_fxn)(i) for i in range(self.nkp))
+        #print("indices ",local_indices," on rank ",MPI.COMM_WORLD.rank)
+        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
         for i in range(len(local_indices)):
             #e,f = tb_fxn(i)
             tb_energy += output[i][0]
@@ -230,15 +233,16 @@ class TEGT_Calc(Calculator):
             evecs[:,:,i] = np.squeeze(output[i][1])
 
         return evals,evecs
-        
-    def calculate(self, atoms, properties=None,
-                  system_changes=all_changes):
+
+    def calculate(self, atoms, properties=None,system_changes=all_changes):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
         if self.use_tb:
             tb_Energy_k,tb_forces_k = self.run_tight_binding(atoms)
-            if MPI.COMM_WORLD.size > 1:
+            tb_Energy = tb_Energy_k
+            tb_forces = tb_forces_k
+            """if MPI.COMM_WORLD.size > 1:
                 tb_forces_k = MPI.COMM_WORLD.gather(tb_forces_k, root=0)
                 tb_Energy_k = MPI.COMM_WORLD.gather(tb_Energy_k,root=0)
             else:
@@ -253,18 +257,19 @@ class TEGT_Calc(Calculator):
             
             MPI.COMM_WORLD.barrier()
             tb_forces = MPI.COMM_WORLD.bcast(tb_forces,root=0)
-            tb_Energy = MPI.COMM_WORLD.bcast(tb_Energy,root=0)
+            tb_Energy = MPI.COMM_WORLD.bcast(tb_Energy,root=0)"""
             #running pylammps interferes with MPI broadcasting so first broadcast summed tb eneriges/forces, then calculate Lammps energies on each node
             #this isn't the most efficient but calculating lammps energies is very fast so it doesn't matter
             #if MPI.COMM_WORLD.Get_rank() == 0:
             #    data_file = os.path.join(self.output,"tegt.data")
             #    ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
+            #exit()
             Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= self.run_lammps(atoms)
 
             self.results['forces'] = tb_forces + Lammps_forces
             self.results['potential_energy'] = tb_Energy + Lammps_potential_energy
             self.results['energy'] = tb_Energy + Lammps_tot_energy
-            MPI.COMM_WORLD.barrier()
+            #MPI.COMM_WORLD.barrier()
             
         else:
             if MPI.COMM_WORLD.Get_rank() == 0:
@@ -345,14 +350,15 @@ class TEGT_Calc(Calculator):
 
         self.output = self.model_dict["output"]
         if self.output!=".":
-            if not os.path.exists(self.output):
-                os.mkdir(self.output)
-            #call parameter files from a specified directory, necessary for fitting
-            subprocess.call("cp "+self.rebo_file+" "+self.output,shell=True)
-            subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
+            if MPI.COMM_WORLD.Get_rank()==0: 
+                if not os.path.exists(self.output):
+                    os.mkdir(self.output)
+                #call parameter files from a specified directory, necessary for fitting
+                subprocess.call("cp "+self.rebo_file+" "+self.output,shell=True)
+                subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
             self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
             self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
-                    
+                        
     def k_uniform_mesh(self,mesh_size):
         r""" 
         Returns a uniform grid of k-points that can be passed to
