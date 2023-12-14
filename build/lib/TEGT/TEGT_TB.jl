@@ -135,7 +135,7 @@ function JULIA_get_tb_forces_energy(atom_positions,atom_types,cell,kpoints,param
             atom_types,cell, kpoints[k,begin:end],params)
         eigvalues,eigvectors = diagH(Ham,device_type,device_num)
         nocc = trunc(Int,natoms/2)
-        Energy += 2*sum(eigvalues[begin:nocc])
+	Energy += 2*sum(eigvalues[begin:nocc])
         Forces += get_hellman_feynman(atom_positions,neighbor_list,atom_types,cell, eigvectors,kpoints[k,:],params)
         
     end
@@ -195,10 +195,10 @@ end
 
 function get_param_dict(params_str)
     if params_str=="popov"
-        params = Dict("B"=>Dict("B"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7), 
-                         "Ti"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29)),
-              "Ti"=>Dict("B"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29), 
-                         "Ti"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7) ))
+        params = Dict("B"=>Dict("B"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7), 
+                         "Ti"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29)),
+              "Ti"=>Dict("B"=>Dict("hopping"=>popov_hopping,"ovrlp"=>overlapInter,"rcut"=>5.29), 
+                         "Ti"=>Dict("hopping"=>porezag_hopping,"ovrlp"=>overlapIntra,"self_energy"=>-5.2887,"rcut"=>3.7) ))
 
     else #params_str=="nn"
         params = Dict("B"=>Dict("B"=>Dict("hopping"=>nnhop,"ovrlp"=>overlapIntra,"self_energy"=>0,"rcut"=>3), 

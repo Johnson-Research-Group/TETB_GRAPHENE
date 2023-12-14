@@ -38,7 +38,7 @@ function gen_ham_ovrlp(atom_positions, neighbor_list,atom_types,cell, kpoint,par
             dist = norm(disp)
             
             if dist < params[atom_types[i]][atom_types[n]]["rcut"] && dist > 1
-                phase = exp(1im*dot(kpoint,disp))
+                phase = exp(-1im*dot(kpoint,disp))
                 Ham[i,n] += params[atom_types[i]][atom_types[n]]["hopping"](disp) * phase
                 Overlap[i,n] = params[atom_types[i]][atom_types[n]]["ovrlp"](disp) * phase
             end
@@ -128,7 +128,11 @@ function diagH(matrix,device_type,device_num)
     else
         matrix = Hermitian(ComplexF64.(Matrix(matrix)))
         eigdata =  eigen(matrix)
-        return eigdata.values,eigdata.vectors
+	eigenvalues, eigenvectors = eigdata.values,eigdata.vectors
+	sorted_indices = sortperm(real(eigenvalues), rev=true)
+	eigenvalues = eigenvalues[sorted_indices]
+        eigenvectors = eigenvectors[:, sorted_indices]
+        return eigenvalues, eigenvectors
     end
 end
 

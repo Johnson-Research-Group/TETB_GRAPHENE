@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account m4205
-#SBATCH --qos regular
+#SBATCH --qos debug
 #SBATCH --job-name test
 #SBATCH --constraint cpu
 #SBATCH --nodes=1
-#SBATCH --time=12:00:00
+#SBATCH --time=00:20:00
 ##SBATCH --ntasks-per-node=4
 ##SBATCH --gpus-per-node=4
 module load python/3.9-anaconda-2021.11

@@ -204,7 +204,6 @@ class TEGT_Calc(Calculator):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
         tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
-        print(self.nkp)
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
         
         number_of_cpu = joblib.cpu_count()
@@ -213,7 +212,7 @@ class TEGT_Calc(Calculator):
         #this works across multiple nodes
         local_indices = indices #[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
         #print("indices ",local_indices," on rank ",MPI.COMM_WORLD.rank)
-        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
+        output = Parallel(n_jobs=number_of_cpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
         for i in range(len(local_indices)):
             #e,f = tb_fxn(i)
             tb_energy += output[i][0]

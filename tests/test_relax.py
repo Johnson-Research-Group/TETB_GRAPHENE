@@ -4,7 +4,7 @@ Created on Mon Sep 11 16:46:47 2023
 
 @author: danpa
 """
-
+import time
 from TEGT import TEGT_calc
 from ase import Atoms
 from ase.optimize import FIRE
@@ -16,14 +16,15 @@ import subprocess
 import os
 import lammps_logfile
 from mpi4py import MPI
+from ase.lattice.hexagonal import Graphite
 def get_atom_pairs(n,a):
     L=n*a+10
     sym=""
     pos=np.zeros((int(2*n),3))
     for i in range(n):
-        sym+="BB"
-        pos[i,:] = np.array([i*a,0,0])
-        pos[i+n,:] = np.array([i*a,a,0])
+        sym+="BTi"
+        pos[i,:] = np.array([0,0,0])
+        pos[i+n,:] = np.array([0,0,(i+1)*a])
     #'BBBBTiTiTiTi'(0,a,0),(a,2*a,0),(2*a,3*a,0),(3*a,4*a,0)
     atoms = Atoms(sym,positions=pos, #,(2*a,0,0),(a,a,0)],
                   cell=[L,L,L])
@@ -41,6 +42,22 @@ def get_twist_geom(t,sep,a=2.46):
     atoms=fg.twist.make_graphene(cell_type="hex",n_layer=2,
                                         p=p_found,q=q_found,lat_con=a,sym=["B","Ti"],
                                         mass=[12.01,12.02],sep=sep,h_vac=20)
+    return atoms
+
+def get_graphite(s,a=2.46):
+    atoms = Graphite(symbol = 'B',latticeconstant={'a':a,'c':2*s},
+               size=(1,2,1))
+    pos = atoms.positions
+    sym = atoms.get_chemical_symbols()
+    mean_z = np.mean(pos[:,2])
+    top_layer_ind = np.squeeze(np.where(pos[:,2]>mean_z))
+    mol_id = np.ones(len(atoms))
+    mol_id[top_layer_ind] +=1
+    atoms.set_array('mol-id',mol_id)
+    for ind in top_layer_ind:
+        sym[ind] = "Ti"
+    atoms.set_chemical_symbols(sym)
+
     return atoms
 
 def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',figname=None):
@@ -84,13 +101,14 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=False
-    test_tbenergy=True
+    test_tbforces=True
+    test_tbenergy=False
     test_lammps=False
     test_kpoints=False
-    test_bands=False
+    test_bands=False 
     test_relaxation=False
     test_scaling=False
+    test_parallelization=False
     theta = 21.78
     
     
@@ -102,6 +120,26 @@ if __name__=="__main__":
                           'output':"theta_21_78"})
     
     calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+
+    if test_parallelization:
+        atoms = get_twist_geom(theta,3.35)
+        kmesh_int = np.array([1,5,10,15])
+        timing = np.zeros_like(kmesh_int,dtype=np.float64)
+        for i,nk in enumerate(kmesh_int):
+            model_dict["kmesh"]=(nk,nk,1)
+            calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+            start = time.time()
+            tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+            end = time.time()
+            timing[i] = end-start
+
+        plt.plot(np.power(kmesh_int,2),timing/60)
+        plt.xlabel("num kpoints")
+        plt.ylabel("time (minutes)")
+        plt.title("kpoint parallelization timing for 30 atom system")
+        plt.savefig("timing_parallelization.png")
+        plt.show()
+        plt.clf()
     
     if test_kpoints:
         atoms = get_twist_geom(theta,3.35)
@@ -125,26 +163,26 @@ if __name__=="__main__":
     if test_tbforces:
         #test forces pairwise
         a_ = np.linspace(2.2,2.6,3)
-        n_ = np.arange(2,4,1)
+        n_ = [2] #np.arange(2,4,1)
         n=3
         #a = 2.46
-        """for i,a in enumerate(a_):
+        for i,a in enumerate(a_):
             for j,n in enumerate(n_):
                 #atoms = get_stack_atoms(n,a)
                 atoms = get_atom_pairs(n,a)
                 print("n= ",n," a= ",a)
                 tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
-                #print("Julia forces = ",tb_forces)
+                print("Julia forces = ",tb_forces)
                 #print("Julia forces (natoms "+str(n)+")= ",tb_forces[:4,:])
                 
                 tb_energy,tb_forces_fd = calc_obj.run_tight_binding(atoms,force_type="force_fd")
-                #print("Julia forces fd = ",tb_forces_fd)
+                print("Julia forces fd = ",tb_forces_fd)
                 #print("Julia forces  fd (natoms "+str(n)+")= ",tb_forces_fd[:4,:])
                 
                 print("error = ",np.mean((tb_forces_fd[:,0]-tb_forces[:,0])))
                 print("ratio x_00= ",tb_forces_fd[0,0]/tb_forces[0,0])
                 print("ratio y_00= ", tb_forces_fd[0,1]/tb_forces[0,1])
-        """ 
+         
         #exit()
         #test forces
         atoms = get_twist_geom(theta,3.35)
@@ -205,26 +243,35 @@ if __name__=="__main__":
             
     if test_tbenergy:
 
-        layer_sep = np.linspace(3,5,10)
-        latte_energies_sep = np.array([-91.602691, -91.213895, -91.017339, -90.915491, -90.860638, -90.830305,-90.813764, -90.805065, -90.800582, -90.798475])
-        julia_energies_sep = np.zeros(10)
+        layer_sep = np.array([3.3266666666666667,3.3466666666666667,3.3866666666666667,3.4333333333333336,3.5,3.5733333333333333,3.6466666666666665,3.7666666666666666,3.9466666666666668,4.113333333333333,4.3533333333333335,4.54,4.76,5.013333333333334,5.16])
+        #total interlayer energy/atom of graphite from popov paper at 40x40 kpoint grid
+        popov_energies_sep = np.array([ 0.0953237410071943, 0.08884892086330941, 0.07877697841726625, 0.06582733812949645, 0.05323741007194249, 0.042086330935251826, 0.03237410071942448, 0.02230215827338132, 0.01151079136690649, 0.007194244604316571, 0.0025179856115108146, 0.0010791366906475058, 0.0007194244604316752, 0.00035971223021584453, 1.3877787807814457e-17])
+        julia_energies_sep = np.zeros_like(popov_energies_sep)
+        kpoints = calc_obj.k_uniform_mesh(model_dict["kmesh"])
+        tb_energy = 0
         for i,s in enumerate(layer_sep):
-            atoms = get_twist_geom(theta,s)
+            atoms = get_graphite(s)
+            #atoms = get_atom_pairs(1,s)
+            #atoms = get_stack_atoms(3,2.46)
+            #atoms = get_twist_geom(21.78,s,a=2.46)
             #test julia interface
-            tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
-            julia_energies_sep[i] = tb_energy
+            #tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+            evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
+            nocc = np.shape(evals)[0]//2
+            tb_energy = 2*np.sum(evals[:nocc,:])/np.shape(kpoints)[0]
+            julia_energies_sep[i] = tb_energy/len(atoms)
             
             
-            plt.plot(layer_sep,latte_energies_sep-latte_energies_sep[-1],color="black",label="latte")
-            plt.plot(layer_sep,julia_energies_sep-julia_energies_sep[-1],color="red",label="julia")
-            plt.legend()
-            plt.savefig("layer_sep_energies.png")
-            plt.clf()
+        plt.plot(layer_sep,popov_energies_sep-popov_energies_sep[-1],color="black",label="reference")
+        plt.plot(layer_sep,(julia_energies_sep-julia_energies_sep[-1]),color="red",label="julia") 
+        plt.legend()
+        plt.savefig("layer_sep_energies.png")
+        plt.clf()
        
         print("RMSE latte, julia tight binding energy = ",np.linalg.norm(
-            (julia_energies_sep-julia_energies_sep[-1])-(latte_energies_sep-latte_energies_sep[-1])))
+            (julia_energies_sep-julia_energies_sep[-1])-(popov_energies_sep-popov_energies_sep[-1])))
         print("difference in energies at d=3.44, = ",(julia_energies_sep[2]-julia_energies_sep[-1])
-              -(latte_energies_sep[2]-latte_energies_sep[-1]))
+              -(popov_energies_sep[2]-popov_energies_sep[-1]))
     if test_lammps:
         #test lammps interface
         atoms = get_twist_geom(theta,3.35)
@@ -234,17 +281,18 @@ if __name__=="__main__":
     if test_bands:
         # srun -num tasks nkp -gpu's per task 1 python test_relax.py ideally
         #test band structure
+        theta = 2.88
         atoms = get_twist_geom(theta,3.35)
         Gamma = [0,   0,   0]
         K = [2/3,1/3,0]
         Kprime = [1/3,2/3,0]
         M = [1/2,0,0]
         sym_pts=[K,Gamma,M,Kprime]
-        nk=100
+        nk=60
         kdat = calc_obj.k_path(sym_pts,nk)
         kpoints = kdat[0]
         evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
-        plot_bands(evals,kdat,erange=5.0,title=r'$\theta=21.78^o$',figname="theta_21_78.png")
+        plot_bands(evals,kdat,erange=0.5,title=r'$\theta=2.88^o$',figname="theta_2_88.png")
         
     if test_relaxation:
         #test relaxation

@@ -212,7 +212,7 @@ class TEGT_Calc(Calculator):
         #this works across multiple nodes
         local_indices = indices #[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
         #print("indices ",local_indices," on rank ",MPI.COMM_WORLD.rank)
-        output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
+        output = Parallel(n_jobs=number_of_cpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
         for i in range(len(local_indices)):
             #e,f = tb_fxn(i)
             tb_energy += output[i][0]
