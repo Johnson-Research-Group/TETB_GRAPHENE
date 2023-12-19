@@ -210,13 +210,13 @@ class TEGT_Calc(Calculator):
         kind = np.array(range(self.nkp))
         indices = np.arange(self.nkp)
         #this works across multiple nodes
-        local_indices = indices #[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
-        #print("indices ",local_indices," on rank ",MPI.COMM_WORLD.rank)
+        #local_indices = indices 
+        local_indices = indices[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
         output = Parallel(n_jobs=number_of_cpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
         for i in range(len(local_indices)):
-            #e,f = tb_fxn(i)
-            tb_energy += output[i][0]
-            tb_forces += output[i][1]
+            e,f = tb_fxn(i)
+            #tb_energy += output[i][0]
+            #tb_forces += output[i][1]
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
     def get_band_structure(self,atoms,kpoints):
@@ -239,14 +239,14 @@ class TEGT_Calc(Calculator):
         Calculator.calculate(self, atoms, properties, system_changes)
         if self.use_tb:
             tb_Energy_k,tb_forces_k = self.run_tight_binding(atoms)
-            tb_Energy = tb_Energy_k
-            tb_forces = tb_forces_k
-            """if MPI.COMM_WORLD.size > 1:
+            #tb_Energy = tb_Energy_k
+            #tb_forces = tb_forces_k
+            if MPI.COMM_WORLD.size > 1:
                 tb_forces_k = MPI.COMM_WORLD.gather(tb_forces_k, root=0)
                 tb_Energy_k = MPI.COMM_WORLD.gather(tb_Energy_k,root=0)
             else:
                 tb_forces_k = [tb_forces_k]
-            #MPI.COMM_WORLD.barrier()
+            MPI.COMM_WORLD.barrier()
             tb_Energy = None
             tb_forces = None
 
@@ -254,9 +254,9 @@ class TEGT_Calc(Calculator):
                 tb_forces = np.sum(np.array(tb_forces_k), axis=0)
                 tb_Energy = np.sum(tb_Energy_k)
             
-            MPI.COMM_WORLD.barrier()
+            #MPI.COMM_WORLD.barrier()
             tb_forces = MPI.COMM_WORLD.bcast(tb_forces,root=0)
-            tb_Energy = MPI.COMM_WORLD.bcast(tb_Energy,root=0)"""
+            tb_Energy = MPI.COMM_WORLD.bcast(tb_Energy,root=0)
             #running pylammps interferes with MPI broadcasting so first broadcast summed tb eneriges/forces, then calculate Lammps energies on each node
             #this isn't the most efficient but calculating lammps energies is very fast so it doesn't matter
             #if MPI.COMM_WORLD.Get_rank() == 0:

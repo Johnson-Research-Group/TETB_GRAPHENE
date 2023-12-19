@@ -101,12 +101,12 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=True
+    test_tbforces=False
     test_tbenergy=False
     test_lammps=False
     test_kpoints=False
     test_bands=False 
-    test_relaxation=False
+    test_relaxation=True
     test_scaling=False
     test_parallelization=False
     theta = 21.78

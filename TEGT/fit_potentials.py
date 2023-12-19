@@ -93,12 +93,12 @@ def get_monolayer_atoms(dx,dy,a=2.462):
     return ase.Atoms(atoms) 
     
 def write_kcinsp(params,kc_file):
-    params = params[:9]
-    params = " ".join([str(x) for x in params])
+    use_params = params[:9]
+    use_params = " ".join([str(x) for x in use_params])
     headers = '               '.join(['', "delta","C","C0 ","C2","C4","z0","A6","A8","A10"])
     with open(kc_file, 'w+') as f:
         f.write("# Refined parameters for Kolmogorov-Crespi Potential with taper function\n\
-                #\n# "+headers+"         S     rcut\nC C "+params+" 1.0    2.0")
+                #\n# "+headers+"         S     rcut\nC C "+use_params+" 1.0    2.0")
     
 
 def format_params(params, sep=' ', prec='.15f'):
@@ -278,9 +278,8 @@ if __name__ == '__main__':
         print("fitting interlayer potential")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         E0 = -154
-        p0= [4.728912880179687, 32.40993806452906, -20.42597835994438,
-             17.187123897218854, -23.370339868938927, 3.150121192047732,
-             1.6724670937654809 ,13.646628785353208, 0.7907544823937784]
+        p0= [4.8652285560616955, 33.253110148086726, -20.82499937496501, 17.406369047739332, -23.46213933162175, 3.1647064583910858, 1.680460137645826, 13.515112134392206, 0.7807075650652564, -144.17107834841926]
+        #p0 = np.random.normal(scale = 5, size=len(p0))
         potential = "KC inspired"
         fitting_obj = fit_potentials_tblg(calc_obj, db, potential,optimizer_type=args.optimizer_type)
         pfinal = fitting_obj.fit(p0)
@@ -347,8 +346,8 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo"),
-                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_final_version"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp"+str(args.nkp)),
+                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp"+str(args.nkp)+"_final_version"),
                           'output':args.output})
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
@@ -363,7 +362,7 @@ if __name__ == '__main__':
         d = d_ab["d"].to_numpy()[min_ind]
         disreg = d_ab["disregistry"].to_numpy()[min_ind]
 
-        E0_tegt = 0
+        E0_tegt = 1e5
         
         for i,stacking in enumerate(stacking_):
             energy_dis_tegt = []
@@ -404,11 +403,12 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":args.tbmodel,
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join("fit_popov_intralayer_nkp225","CH_pz.rebo_nkp225_final_version"),
+                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp"+str(args.nkp)+"_final_version"),
                           #"intralayer potential":"Rebo",
-                          "interlayer potential":os.path.join("fit_popov_intralayer_nkp225","KC_insp_pz.txt_nkp225"),
+                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp"+str(args.nkp)),
                           'output':args.output
                           })
+    
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
         a = 2.462

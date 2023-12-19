@@ -74,19 +74,19 @@ if __name__=="__main__":
         }
     batch_options = batch_options_perlmutter
     tb_models = ["popov"]
-    nkp = [1] #,225]
+    nkp = [1,225]
     for t in tb_models:
         for k in nkp:
-            executable = "python fit_potentials.py -m "+t+" -t interlayer -k "+str(k)
+            executable = "python fit_potentials.py -m "+t+" -t interlayer -k "+str(k) #+" -g True"
             batch_options["--job-name"]="nkp"+str(k)+"_interlayer"
             batch_options["--output"]= "nkp"+str(k)+"_interlayer.log"
             #submit_batch_file_uiuc_cc(executable,batch_options)
             submit_batch_file_perlmutter(executable,batch_options_perlmutter)
 
 
-            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k) #+" -g True"
+            executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k) +" -g True"
             batch_options["--job-name"]="mesh"+str(k)+"_intralayer"
             batch_options["--output"]= "mesh"+str(k)+"_intralayer.log"
             print(executable)
-            submit_batch_file_perlmutter(executable,batch_options)
+            #submit_batch_file_perlmutter(executable,batch_options)
             #submit_batch_file_uiuc_cc(executable,batch_options)
