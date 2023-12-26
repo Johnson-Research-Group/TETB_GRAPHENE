@@ -110,3 +110,43 @@ def nnhop_intra(dR):
 
 def nnhop_inter(dR):
     return 0.3 * cp.ones(len(dR), dtype=cp.float64)
+
+if __name__=="__main__":
+    import matplotlib.pyplot as plt
+    import numpy as np
+    n=30
+    r = cp.linspace(0.53,3.6,n)
+    disp = cp.stack((r,cp.zeros(n),cp.zeros(n)),axis=1)
+    plt.rcParams.update({'font.size': 15})
+    intra_hop = porezag_hopping(disp).get()
+    plt.plot(r.get(),intra_hop)
+    plt.title("Intralayer Hopping")
+    plt.xlabel("pairwise distance (Angstroms)")
+    plt.ylabel("hopping (eV)")
+    plt.savefig("intralayer_hoppping.png",bbox_inches='tight',dpi=100)
+    plt.show()
+    plt.clf()
+
+    disp = cp.stack((cp.zeros(n),cp.zeros(n),r),axis=1)
+    inter_hop = popov_hopping(disp).get()
+    plt.plot(r.get(),inter_hop)
+    plt.title("Interlayer Hopping")
+    plt.xlabel("pairwise distance (Angstroms)")
+    plt.ylabel("hopping (eV)")
+    plt.savefig("interlayer_hoppping.png",bbox_inches='tight',dpi=100)
+    plt.show()
+    plt.clf()
+
+
+    plt.plot(r.get(),inter_hop,label="interlayer")
+    plt.plot(r.get(),intra_hop,label="intralayer")
+    plt.plot(3.43*np.ones_like(r.get()),np.linspace(-40,40,len(r.get())),label="eq. interlayer spacing",linestyle='dashed')
+    plt.plot(1.43*np.ones_like(r.get()),np.linspace(-40,40,len(r.get())),label="eq. nn distance",linestyle='dashed')
+    plt.title("Hopping Pz orbitals")
+    plt.xlabel("pairwise distance (Angstroms)")
+    plt.ylabel("hopping (eV)")
+    plt.ylim((-25,10))
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.savefig("hopppings.png",bbox_inches='tight',dpi=100)
+    plt.show()
+    plt.clf()

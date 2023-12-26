@@ -26,9 +26,9 @@ from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
 from mpi4py import MPI
-import TEGT_GPU
-from TEGT_GPU.TEGT_TB_cupy import *
-
+#import TEGT_GPU
+#from TEGT_GPU.TEGT_TB_cupy import *
+from TEGT_TB_cupy import *
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
@@ -57,7 +57,8 @@ class TEGT_Calc(Calculator):
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
 
-        self.repo_root = os.path.join("/".join(TEGT_GPU.__file__.split("/")[:-1]))
+        #self.repo_root = os.path.join("/".join(TEGT_GPU.__file__.split("/")[:-1]))
+        self.repo_root = os.getcwd()
         self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
                      "Rebo":"CH.rebo",
@@ -173,12 +174,11 @@ class TEGT_Calc(Calculator):
                 kpoint = kpoints[i,:]
                 evals, evecs = calc_band_structure(positions, atom_types, cell, kpoint, tbparams)
                 return evals,evecs
-            
         return func
     
     def run_tight_binding(self,atoms,force_type="force"):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
-        tb_fxn = self.get_tb_fxn(atoms.positions,np.array(atoms.get_chemical_symbols()),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
+        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_array("mol-id"),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
 
@@ -186,17 +186,35 @@ class TEGT_Calc(Calculator):
         kind = np.array(range(self.nkp))
         indices = np.arange(self.nkp)
         #this works across multiple nodes
-        local_indices = indices[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
+        local_indices = indices #[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
         #output = Parallel(n_jobs=len(local_indices))(delayed(tb_fxn)(i) for i in range(self.nkp))
         for i in range(len(local_indices)):
             e,f = tb_fxn(i)
+            tb_energy += e
+            tb_forces += f
             #tb_energy += output[i][0]
             #tb_forces += output[i][1]
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
 
+    def run_tight_binding_cpu(self,atoms,force_type="force"):
+        """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
+        model = pythtb_tblg.tblg_model(atoms,parameters='popov')
+        mesh_size = (int(np.sqrt(self.nkp)),int(np.sqrt(self.nkp)),1)
+        kvec = model.k_uniform_mesh(mesh_size)
+        model.set_solver( {'cupy':False,
+                        'sparse':False})
+
+        model.solve_all(k_vec)
+        fermi_index = model._norb//2
+        evals = model.get_eigenvalues()
+        tb_energy = np.sum(evals[:fermi_ind,:])
+        tb_forces = np.zeros((len(atoms),3))
+
+        return tb_energy.real/self.nkp, tb_forces.real/self.nkp
+
     def get_band_structure(self,atoms,kpoints):
         nkp = np.shape(kpoints)[0]
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
+        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_array("mol-id"),np.array(atoms.cell),
                                     kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         evals = np.zeros((atoms.get_global_number_of_atoms(),nkp))
         evecs = np.zeros((atoms.get_global_number_of_atoms(),atoms.get_global_number_of_atoms(),nkp),dtype=complex) 
@@ -205,7 +223,6 @@ class TEGT_Calc(Calculator):
             eval_tmp,evec_tmp = tb_fxn(i)
             evals[:,i] = np.squeeze(eval_tmp)
             evecs[:,:,i] = np.squeeze(evec_tmp)
-
         return evals,evecs
 
     def calculate(self, atoms, properties=None, system_changes=all_changes):

@@ -1,6 +1,6 @@
 import cupy as cp
-#import TEGT_GPU.descriptors as descriptors
-import descriptors
+import TEGT_GPU.descriptors as descriptors
+
 def exponential(x, a, b):
     return a * cp.exp(-b * (x - 6.33))
 
@@ -58,8 +58,7 @@ def chebyshev_t(c, x):
 
 def popov_hopping(dR):
     dRn = cp.linalg.norm(dR, axis=1)
-    dRn = dR / dRn[:,cp.newaxis]
-    eV_per_hart=27.2114
+    dRn = dR / dRn
 
     l = dRn[:, 0]
     m = dRn[:, 1]
@@ -81,13 +80,11 @@ def popov_hopping(dR):
     Vpp_pi -= Cpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
-    #return valmat*eV_per_hart
-    return cp.linalg.norm(dR, axis=1)
+    return valmat
 
 def porezag_hopping(dR):
     dRn = cp.linalg.norm(dR, axis=1)
-    dRn = dR / dRn[:,cp.newaxis]
-    eV_per_hart=27.2114
+    dRn = dR / dRn
 
     l = dRn[:, 0]
     m = dRn[:, 1]
@@ -108,9 +105,7 @@ def porezag_hopping(dR):
     Vpp_pi -= Cpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
-
-    #return valmat*eV_per_hart
-    return cp.linalg.norm(dR, axis=1)
+    return valmat
 
 def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     """
@@ -130,16 +125,15 @@ def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     di = cp.array(di)
     dj = cp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = cp.zeros_like(i,dtype=cp.float64)
-    ntypes = [1,2]
+    ntypes = set(layer_types)
+    hoppings = []
     for i_type in ntypes:
         for j_type in ntypes:
-            valid_indices = layer_types[i] == i_type
-            valid_indices &= layer_types[j] == j_type
+            valid_indices = layer_types == i_type
             if i_type==j_type:
-                hoppings[valid_indices] = porezag_hopping(disp[valid_indices])
+                hoppings.append(porezag_hopping(disp[valid_indices]))
             else:
-                hoppings[valid_indices] = popov_hopping(disp[valid_indices])
+                hoppings.append(popov_hopping(disp[valid_indices]))
     return hoppings
 
 def mk(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):

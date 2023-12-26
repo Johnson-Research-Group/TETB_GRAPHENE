@@ -178,7 +178,7 @@ class TEGT_Calc(Calculator):
     
     def run_tight_binding(self,atoms,force_type="force"):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
-        tb_fxn = self.get_tb_fxn(atoms.positions,np.array(atoms.get_chemical_symbols()),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
+        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_array("mol-id"),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
 
@@ -196,7 +196,7 @@ class TEGT_Calc(Calculator):
 
     def get_band_structure(self,atoms,kpoints):
         nkp = np.shape(kpoints)[0]
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
+        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_array("mol-id"),np.array(atoms.cell),
                                     kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         evals = np.zeros((atoms.get_global_number_of_atoms(),nkp))
         evecs = np.zeros((atoms.get_global_number_of_atoms(),atoms.get_global_number_of_atoms(),nkp),dtype=complex) 
@@ -225,6 +225,7 @@ class TEGT_Calc(Calculator):
 
             if MPI.COMM_WORLD.rank == 0:
                 tb_forces = np.sum(np.array(tb_forces_k), axis=0)
+                print("TB FORCES ",tb_forces)
                 tb_Energy = np.sum(tb_Energy_k)
             
             MPI.COMM_WORLD.barrier()
