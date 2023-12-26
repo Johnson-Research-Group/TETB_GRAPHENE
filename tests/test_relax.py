@@ -6,6 +6,7 @@ Created on Mon Sep 11 16:46:47 2023
 """
 import time
 from TEGT import TEGT_calc
+from TEGT import TEGT_calc_dask
 from ase import Atoms
 from ase.optimize import FIRE
 import flatgraphene as fg
@@ -114,12 +115,12 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":"popov", 
                           "basis":"pz",
-                          "kmesh":(15,15,1),
+                          "kmesh":(4,4,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
     
-    calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+    calc_obj = TEGT_calc_dask.TEGT_Calc(model_dict)
 
     if test_parallelization:
         atoms = get_twist_geom(theta,3.35)
@@ -255,10 +256,10 @@ if __name__=="__main__":
             #atoms = get_stack_atoms(3,2.46)
             #atoms = get_twist_geom(21.78,s,a=2.46)
             #test julia interface
-            #tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
-            evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
-            nocc = np.shape(evals)[0]//2
-            tb_energy = 2*np.sum(evals[:nocc,:])/np.shape(kpoints)[0]
+            tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+            #evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
+            #nocc = np.shape(evals)[0]//2
+            #tb_energy = 2*np.sum(evals[:nocc,:])/np.shape(kpoints)[0]
             julia_energies_sep[i] = tb_energy/len(atoms)
             
             
@@ -295,13 +296,17 @@ if __name__=="__main__":
         plot_bands(evals,kdat,erange=0.5,title=r'$\theta=2.88^o$',figname="theta_2_88.png")
         
     if test_relaxation:
+        #scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
+
+        #client = Client(scheduler_file=scheduler_file)
         #test relaxation
+        print("running relaxation")
         atoms = get_twist_geom(theta,3.35)
         atoms.calc = calc_obj
         calc_folder = "theta_21_78"
-        if MPI.COMM_WORLD.rank==0:
-            if not os.path.exists(calc_folder):
-                os.mkdir(calc_folder)
+        #if MPI.COMM_WORLD.rank==0:
+        if not os.path.exists(calc_folder):
+            os.mkdir(calc_folder)
         #energy = atoms.get_potential_energy()
         dyn = FIRE(atoms,
                    trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),

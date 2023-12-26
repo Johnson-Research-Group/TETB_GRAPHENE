@@ -3,6 +3,7 @@ setup.py
 TEGT/TB_Utils.jl
 TEGT/TEGT_TB.jl
 TEGT/TEGT_calc.py
+TEGT/TEGT_calc_dask.py
 TEGT/__init__.py
 TEGT/fit_potentials.py
 TEGT/submit_fit_potential.py
@@ -11,6 +12,4 @@ TEGT.egg-info/PKG-INFO
 TEGT.egg-info/SOURCES.txt
 TEGT.egg-info/dependency_links.txt
 TEGT.egg-info/top_level.txt
-tests/test_dask.py
-tests/test_gpu.py
 tests/test_relax.py

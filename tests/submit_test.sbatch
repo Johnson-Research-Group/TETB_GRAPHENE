@@ -4,6 +4,7 @@
 #SBATCH --job-name test
 #SBATCH --constraint cpu
 #SBATCH --nodes=1
+#SBATH --ntasks-per-node=1
 #SBATCH --time=00:20:00
 ##SBATCH --ntasks-per-node=4
 ##SBATCH --gpus-per-node=4
