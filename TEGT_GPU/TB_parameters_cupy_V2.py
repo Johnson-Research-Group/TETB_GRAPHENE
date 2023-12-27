@@ -1,15 +1,25 @@
-import cupy as cp
+use_cupy=False
+if use_cupy:
+    #import autograd.cupy as lp  # Thinly-wrapped numpy
+    from autograd import grad
+    #from cupyx.scipy.spatial.distance import cdist
+else:
+    import autograd.numpy as lp  # Thinly-wrapped numpy
+    from autograd import grad
+    from scipy.spatial.distance import cdist
+
+import numpy as np
 #import TEGT_GPU.descriptors as descriptors
 import descriptors
 def exponential(x, a, b):
-    return a * cp.exp(-b * (x - 6.33))
+    return a * lp.exp(-b * (x - 6.33))
 
 def moon(r, a, b, c): 
     """
     Parameterization from Moon and Koshino, Phys. Rev. B 85, 195458 (2012)
     """
     d, dz = r 
-    return a * cp.exp(-b * (d - 2.68))*(1 - (dz/d)**2) + c * cp.exp(-b * (d - 6.33)) * (dz/d)**2
+    return a * lp.exp(-b * (d - 2.68))*(1 - (dz/d)**2) + c * lp.exp(-b * (d - 6.33)) * (dz/d)**2
 
 def fang(rvec, a0, b0, c0, a3, b3, c3, a6, b6, c6, d6):
     """
@@ -19,25 +29,25 @@ def fang(rvec, a0, b0, c0, a3, b3, c3, a6, b6, c6, d6):
     r = r / 4.649 
 
     def v0(x, a, b, c): 
-        return a * cp.exp(-b * x ** 2) * cp.cos(c * x)
+        return a * lp.exp(-b * x ** 2) * lp.cos(c * x)
 
     def v3(x, a, b, c): 
-        return a * (x ** 2) * cp.exp(-b * (x - c) ** 2)  
+        return a * (x ** 2) * lp.exp(-b * (x - c) ** 2)  
 
     def v6(x, a, b, c, d): 
-        return a * cp.exp(-b * (x - c)**2) * cp.sin(d * x)
+        return a * lp.exp(-b * (x - c)**2) * lp.sin(d * x)
 
     f =  v0(r, a0, b0, c0) 
-    f += v3(r, a3, b3, c3) * (cp.cos(3 * theta12) + cp.cos(3 * theta21))
-    f += v6(r, a6, b6, c6, d6) * (cp.cos(6 * theta12) + cp.cos(6 * theta21))
+    f += v3(r, a3, b3, c3) * (lp.cos(3 * theta12) + lp.cos(3 * theta21))
+    f += v6(r, a6, b6, c6, d6) * (lp.cos(6 * theta12) + lp.cos(6 * theta21))
     return f
 
 def chebyshev_t(c, x):
     if c.dtype.char in '?bBhHiIlLqQpP':
-        c = c.astype(cp.double)
+        c = c.astype(lp.double)
     if isinstance(x, (tuple, list)):
-        x = cp.asarray(x)
-    if isinstance(x, cp.ndarray):
+        x = lp.asarray(x)
+    if isinstance(x, lp.ndarray):
         c = c.reshape(c.shape + (1,)*x.ndim)
 
     if len(c) == 1:
@@ -57,60 +67,60 @@ def chebyshev_t(c, x):
     return c0 + c1 * x    
 
 def popov_hopping(dR):
-    dRn = cp.linalg.norm(dR, axis=1)
-    dRn = dR / dRn[:,cp.newaxis]
+    dRn = lp.linalg.norm(dR, axis=1)
+    dRn = dR / dRn[:,lp.newaxis]
     eV_per_hart=27.2114
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    r = cp.linalg.norm(dR, axis=1)
-    r = cp.clip(r, 1, 10)
+    r = lp.linalg.norm(dR, axis=1)
+    r = lp.clip(r, 1, 10)
 
     aa = 1.0  # [Bohr radii]
     b = 10.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
 
-    Cpp_sigma = cp.array([0.1727212, -0.0937225, -0.0445544, 0.1114266, -0.0978079, 0.0577363, -0.0262833, 0.0094388, -0.0024695, 0.0003863])
-    Cpp_pi = cp.array([-0.3969243, 0.3477657, -0.2357499, 0.1257478, -0.0535682, 0.0181983, -0.0046855, 0.0007303, 0.0000225, -0.0000393])
+    lpp_sigma = lp.array([0.1727212, -0.0937225, -0.0445544, 0.1114266, -0.0978079, 0.0577363, -0.0262833, 0.0094388, -0.0024695, 0.0003863])
+    lpp_pi = lp.array([-0.3969243, 0.3477657, -0.2357499, 0.1257478, -0.0535682, 0.0181983, -0.0046855, 0.0007303, 0.0000225, -0.0000393])
 
-    Vpp_sigma = cp.array([chebyshev_t(Cpp_sigma, yi) for yi in y])
-    Vpp_pi = cp.array([chebyshev_t(Cpp_pi, yi) for yi in y])
+    Vpp_sigma = lp.array([chebyshev_t(lpp_sigma, yi) for yi in y])
+    Vpp_pi = lp.array([chebyshev_t(lpp_pi, yi) for yi in y])
 
-    Vpp_sigma -= Cpp_sigma[0] / 2
-    Vpp_pi -= Cpp_pi[0] / 2
+    Vpp_sigma -= lpp_sigma[0] / 2
+    Vpp_pi -= lpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
     #return valmat*eV_per_hart
-    return cp.linalg.norm(dR, axis=1)
+    return lp.linalg.norm(dR, axis=1)
 
 def porezag_hopping(dR):
-    dRn = cp.linalg.norm(dR, axis=1)
-    dRn = dR / dRn[:,cp.newaxis]
+    dRn = lp.linalg.norm(dR, axis=1)
+    dRn = dR / dRn[:,lp.newaxis]
     eV_per_hart=27.2114
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    r = cp.linalg.norm(dR, axis=1)
-    r = cp.clip(r, 1, 7)
+    r = lp.linalg.norm(dR, axis=1)
+    r = lp.clip(r, 1, 7)
 
     aa = 1.0  # [Bohr radii]
     b = 7.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
 
-    Cpp_sigma = cp.array([0.2422701, -0.1315258, -0.0372696, 0.0942352, -0.0673216, 0.0316900, -0.0117293, 0.0033519, -0.0004838, -0.0000906])
-    Cpp_pi = cp.array([-0.3793837, 0.3204470, -0.1956799, 0.0883986, -0.0300733, 0.0074465, -0.0008563, -0.0004453, 0.0003842, -0.0001855])
+    lpp_sigma = lp.array([0.2422701, -0.1315258, -0.0372696, 0.0942352, -0.0673216, 0.0316900, -0.0117293, 0.0033519, -0.0004838, -0.0000906])
+    lpp_pi = lp.array([-0.3793837, 0.3204470, -0.1956799, 0.0883986, -0.0300733, 0.0074465, -0.0008563, -0.0004453, 0.0003842, -0.0001855])
 
-    Vpp_sigma = cp.array([chebyshev_t(Cpp_sigma, yi) for yi in y])
-    Vpp_pi = cp.array([chebyshev_t(Cpp_pi, yi) for yi in y])
-    Vpp_sigma -= Cpp_sigma[0] / 2
-    Vpp_pi -= Cpp_pi[0] / 2
+    Vpp_sigma = lp.array([chebyshev_t(lpp_sigma, yi) for yi in y])
+    Vpp_pi = lp.array([chebyshev_t(lpp_pi, yi) for yi in y])
+    Vpp_sigma -= lpp_sigma[0] / 2
+    Vpp_pi -= lpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
 
     #return valmat*eV_per_hart
-    return cp.linalg.norm(dR, axis=1)
+    return lp.linalg.norm(dR, axis=1)
 
 def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     """
@@ -123,14 +133,14 @@ def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     Output:
         hoppings        - float (n) list of hoppings for the given i, j, di, dj
     """
-    lattice_vectors = cp.array(lattice_vectors)
-    atomic_basis = cp.array(atomic_basis)
-    i = cp.array(i)
-    j = cp.array(j)
-    di = cp.array(di)
-    dj = cp.array(dj)
+    lattice_vectors = lp.array(lattice_vectors)
+    atomic_basis = lp.array(atomic_basis)
+    i = lp.array(i)
+    j = lp.array(j)
+    di = lp.array(di)
+    dj = lp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = cp.zeros_like(i,dtype=cp.float64)
+    hoppings = lp.zeros_like(i,dtype=lp.float64)
     ntypes = [1,2]
     for i_type in ntypes:
         for j_type in ntypes:
@@ -139,7 +149,8 @@ def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
             if i_type==j_type:
                 hoppings[valid_indices] = porezag_hopping(disp[valid_indices])
             else:
-                hoppings[valid_indices] = popov_hopping(disp[valid_indices])
+                hop = popov_hopping(disp[valid_indices])
+                hoppings[valid_indices] = hop
     return hoppings
 
 def mk(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
@@ -153,14 +164,27 @@ def mk(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     Output:
         hoppings        - float (n) list of hoppings for the given i, j, di, dj
     """
-    lattice_vectors = cp.array(lattice_vectors)
-    atomic_basis = cp.array(atomic_basis)
-    i = cp.array(i)
-    j = cp.array(j)
-    di = cp.array(di)
-    dj = cp.array(dj)
+    lattice_vectors = lp.array(lattice_vectors)
+    atomic_basis = lp.array(atomic_basis)
+    i = lp.array(i)
+    j = lp.array(j)
+    di = lp.array(di)
+    dj = lp.array(dj)
     dxy, dz = descriptors.ix_to_dist(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = moon([cp.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48)
+    hoppings = moon([lp.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48)
+    return hoppings
+
+def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
+    lattice_vectors = lp.array(lattice_vectors)
+    atomic_basis = lp.array(atomic_basis)
+    i = lp.array(i)
+    j = lp.array(j)
+    di = lp.array(di)
+    dj = lp.array(dj)
+    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
+    dist = lp.linalg.norm(disp,axis=1)
+    nn_dist = 1.42
+    hoppings = -(dist-nn_dist)+2
     return hoppings
 
 def letb(lattice_vectors, atomic_basis, i, j, di, dj, layer_types=None):

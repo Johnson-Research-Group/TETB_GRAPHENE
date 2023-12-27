@@ -22,13 +22,15 @@ import os
 import json
 import subprocess
 from ase.calculators.calculator import Calculator, all_changes
-from lammps import PyLammps
+#from lammps import PyLammps
+import ase as PyLammps
 import joblib
 from joblib import Parallel, delayed
-from mpi4py import MPI
 #import TEGT_GPU
 #from TEGT_GPU.TEGT_TB_cupy import *
 from TEGT_TB_cupy import *
+#import dask
+#from dask.distributed import Client
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
@@ -176,100 +178,85 @@ class TEGT_Calc(Calculator):
                 return evals,evecs
         return func
     
+    def reduce_bands(self,results):
+        evals = np.zeros((self.natoms,self.nkp))
+        evecs = np.zeros((self.natoms,self.natoms,self.nkp),dtype=complex)
+        i=0
+        for eva,eve in results:
+            evals[:,i] = eva
+            evecs[:,:,i] = eve
+            i+=1
+        return evals, evecs
+
+    def reduce_energy(self,results):
+        total_force = np.zeros((self.natoms,3))
+        total_energy = 0
+        for e, f in results: 
+            total_force += f
+            total_energy += e
+        return total_energy, total_force
+
     def run_tight_binding(self,atoms,force_type="force"):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_array("mol-id"),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
+        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
-
-        number_of_cpu = joblib.cpu_count()
-        kind = np.array(range(self.nkp))
-        indices = np.arange(self.nkp)
+        self.natoms = len(atoms)
         #this works across multiple nodes
-        local_indices = indices #[MPI.COMM_WORLD.rank::MPI.COMM_WORLD.size]
-        #output = Parallel(n_jobs=len(local_indices))(delayed(tb_fxn)(i) for i in range(self.nkp))
-        for i in range(len(local_indices)):
+
+        #dask
+        """scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
+
+        client = Client(scheduler_file=scheduler_file)
+        
+        futures = client.map(tb_fxn, np.arange(self.nkp))
+        tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()"""
+
+        #serial
+        for i in range(self.nkp):
             e,f = tb_fxn(i)
             tb_energy += e
             tb_forces += f
-            #tb_energy += output[i][0]
-            #tb_forces += output[i][1]
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
-
-    def run_tight_binding_cpu(self,atoms,force_type="force"):
-        """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
-        model = pythtb_tblg.tblg_model(atoms,parameters='popov')
-        mesh_size = (int(np.sqrt(self.nkp)),int(np.sqrt(self.nkp)),1)
-        kvec = model.k_uniform_mesh(mesh_size)
-        model.set_solver( {'cupy':False,
-                        'sparse':False})
-
-        model.solve_all(k_vec)
-        fermi_index = model._norb//2
-        evals = model.get_eigenvalues()
-        tb_energy = np.sum(evals[:fermi_ind,:])
-        tb_forces = np.zeros((len(atoms),3))
-
-        return tb_energy.real/self.nkp, tb_forces.real/self.nkp
-
+    
     def get_band_structure(self,atoms,kpoints):
-        nkp = np.shape(kpoints)[0]
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_array("mol-id"),np.array(atoms.cell),
-                                    kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
-        evals = np.zeros((atoms.get_global_number_of_atoms(),nkp))
-        evecs = np.zeros((atoms.get_global_number_of_atoms(),atoms.get_global_number_of_atoms(),nkp),dtype=complex) 
-        #output = Parallel(n_jobs=nkp)(delayed(tb_fxn)(i) for i in range(nkp))
-        for i in range(nkp):
-            eval_tmp,evec_tmp = tb_fxn(i)
-            evals[:,i] = np.squeeze(eval_tmp)
-            evecs[:,:,i] = np.squeeze(evec_tmp)
+        self.nkp = np.shape(kpoints)[0]
+        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
+                                 kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
+        self.natoms = len(atoms)
+        """scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
+
+        client = Client(scheduler_file=scheduler_file)
+        futures = client.map(tb_fxn, np.arange(self.nkp)) #, count=count)
+        evals,evecs  = client.submit(self.reduce_energy, futures).result()"""
+        #serial
+        evals = np.zeros((len(atoms),self.nkp))
+        evecs = np.zeros((len(atoms),len(atoms),self.nkp),dtype=np.complex64)
+        for i in range(self.nkp):
+            tmp_evals,tmp_evecs = tb_fxn(i)
+            evals[:,i] = np.squeeze(tmp_evals)
+            evecs[:,:,i] = np.squeeze(tmp_evecs)
         return evals,evecs
 
-    def calculate(self, atoms, properties=None, system_changes=all_changes):
+    def calculate(self, atoms, properties=None,system_changes=all_changes):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
         if self.use_tb:
-            tb_Energy_k,tb_forces_k = self.run_tight_binding(atoms)
-            if MPI.COMM_WORLD.size > 1:
-                tb_forces_k = MPI.COMM_WORLD.gather(tb_forces_k, root=0)
-                tb_Energy_k = MPI.COMM_WORLD.gather(tb_Energy_k,root=0)
-            else:
-                tb_forces_k = [tb_forces_k]
-            #MPI.COMM_WORLD.barrier()
-            tb_Energy = None
-            tb_forces = None
-
-            if MPI.COMM_WORLD.rank == 0:
-                tb_forces = np.sum(np.array(tb_forces_k), axis=0)
-                tb_Energy = np.sum(tb_Energy_k)
-            
-            MPI.COMM_WORLD.barrier()
-            tb_forces = MPI.COMM_WORLD.bcast(tb_forces,root=0)
-            tb_Energy = MPI.COMM_WORLD.bcast(tb_Energy,root=0)
-            #running pylammps interferes with MPI broadcasting so first broadcast summed tb eneriges/forces, then calculate Lammps energies on each node
-            #this isn't the most efficient but calculating lammps energies is very fast so it doesn't matter
-            #if MPI.COMM_WORLD.Get_rank() == 0:
-            #    data_file = os.path.join(self.output,"tegt.data")
-            #    ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
+            tb_Energy,tb_forces = self.run_tight_binding(atoms)
             Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= self.run_lammps(atoms)
 
             self.results['forces'] = tb_forces + Lammps_forces
             self.results['potential_energy'] = tb_Energy + Lammps_potential_energy
             self.results['energy'] = tb_Energy + Lammps_tot_energy
-            MPI.COMM_WORLD.barrier()
             
         else:
-            if MPI.COMM_WORLD.Get_rank() == 0:
-                data_file = os.path.join(self.output,"tegt.data")
-                ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
-                self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
-                self.results['forces'] = self.Lammps_forces
-                self.results['potential_energy'] = self.Lammps_potential_energy
-                self.results['energy'] = self.Lammps_tot_energy
-            else:
-                print("run dynamics in serial for classical potentials")
-                exit()    
+            data_file = os.path.join(self.output,"tegt.data")
+            ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
+            self.Lammps_forces,self.Lammps_potential_energy,self.Lammps_tot_energy= self.run_lammps(atoms)
+            self.results['forces'] = self.Lammps_forces
+            self.results['potential_energy'] = self.Lammps_potential_energy
+            self.results['energy'] = self.Lammps_tot_energy
 
     def run(self,atoms):
         self.calculate(atoms)
@@ -337,12 +324,11 @@ class TEGT_Calc(Calculator):
 
         self.output = self.model_dict["output"]
         if self.output!=".":
-            if MPI.COMM_WORLD.Get_rank()==0:
-                if not os.path.exists(self.output):
-                    os.mkdir(self.output)
-                #call parameter files from a specified directory, necessary for fitting
-                subprocess.call("cp "+self.rebo_file+" "+self.output,shell=True)
-                subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
+            if not os.path.exists(self.output):
+                os.mkdir(self.output)
+            #call parameter files from a specified directory, necessary for fitting
+            subprocess.call("cp "+self.rebo_file+" "+self.output,shell=True)
+            subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
             self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
             self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
 

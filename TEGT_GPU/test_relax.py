@@ -86,16 +86,16 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=False
+    test_tbforces=True
     test_tbenergy=False
     test_lammps=False
-    test_bands=True
+    test_bands=False
     test_relaxation=False
     test_scaling=False
-    theta = 2.88
+    theta = 21.78
     
     
-    model_dict = dict({"tight binding parameters":"popov", 
+    model_dict = dict({"tight binding parameters":"mk", 
                           "basis":"pz",
                           "kmesh":(1,1,1),
                           "intralayer potential":"Pz rebo",
@@ -106,50 +106,45 @@ if __name__=="__main__":
     
     if test_tbforces:
         #test forces pairwise
-        a_ = np.linspace(2.2,2.6,3)
-        n_ = np.arange(2,4,1)
-        n=1
+        a_ = np.linspace(2.3,2.7,3)
+        a_ = np.linspace(1.2,1.6,3)
+        n_ = [1] #np.arange(2,4,1)
+        n=2
         a = 2.46
         
         for i,a in enumerate(a_):
             #    for j,n in enumerate(n_):
                 #atoms = get_stack_atoms(n,a)
             atoms = get_atom_pairs(n,a)
+            pos = atoms.positions
             print("n= ",n," a= ",a)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             print("Julia forces = ",tb_forces)
+            #plt.quiver(pos[:,0],pos[:,1],tb_forces[:,0],tb_forces[:,1])
+            #plt.savefig("tb_force_quiver_hf"+str(a)+".png")
+            #plt.clf()
             #print("Julia forces (natoms "+str(n)+")= ",tb_forces[:4,:])
             
             tb_energy,tb_forces_fd = calc_obj.run_tight_binding(atoms,force_type="force_fd")
+            #plt.quiver(pos[:,0],pos[:,1],tb_forces_fd[:,0],tb_forces_fd[:,1])
+            #plt.savefig("tb_force_quiver_fd"+str(a)+".png")
+            #plt.clf()
             print("Julia forces fd = ",tb_forces_fd)
+            print("\n\n\n")
         #print("Julia forces  fd (natoms "+str(n)+")= ",tb_forces_fd[:4,:])
         
         #print("error = ",np.mean((tb_forces_fd[:,0]-tb_forces[:,0])))
         #print("ratio x_00= ",tb_forces_fd[0,0]/tb_forces[0,0])
         #print("ratio y_00= ", tb_forces_fd[0,1]/tb_forces[0,1])
     
-        #exit()
+        exit()
         #test forces
         atoms = get_twist_geom(theta,3.35)
-        atoms = ase.io.read("latte_compare_struct.dump",format='lammps-dump-text')
-        pos = atoms.positions
-        mean_z = np.mean(pos[:,2])
-        top_ind  = np.where(pos[:,2]>mean_z)
-        bot_ind = np.where(pos[:,2]<mean_z)
-        mol_id = np.ones(len(atoms))
-        mol_id[bot_ind]=2
-        atoms.set_array('mol-id',mol_id)
         #test julia interface
         tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
         print("gpu force \n",tb_forces)
         print("gpu <forces> = ",np.mean(np.linalg.norm(tb_forces,axis=1)))
         
-        #latte forces
-        latte_forces = atoms.get_forces()
-        print("latte force \n",latte_forces)
-        print("latte <forces> = ",np.mean(np.linalg.norm(latte_forces,axis=1)))
-        #finite difference forces
-        exit()
         tb_energy,tb_forces_fd = calc_obj.run_tight_binding(atoms,force_type="force_fd")
         print("fd force \n",tb_forces_fd)
         print("finite difference Energy, <forces> = ",tb_energy," ",np.mean(np.linalg.norm(tb_forces_fd,axis=1)))
@@ -230,18 +225,18 @@ if __name__=="__main__":
     if test_bands:
         # srun -num tasks nkp -gpu's per task 1 python test_relax.py ideally
         #test band structure
-        theta=2.88
+        theta=21.78
         atoms = get_twist_geom(theta,3.35)
         Gamma = [0,   0,   0]
         K = [2/3,1/3,0]
         Kprime = [1/3,2/3,0]
         M = [1/2,0,0]
         sym_pts=[K,Gamma,M,Kprime]
-        nk=40
+        nk=60
         kdat = calc_obj.k_path(sym_pts,nk)
         kpoints = kdat[0]
         evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
-        plot_bands(evals,kdat,erange=0.5,title=r'$\theta=2.88^o$',figname="theta_2.88.png")
+        plot_bands(evals,kdat,erange=5,title=r'$\theta=$'+str(theta)+r'$^o$',figname="theta_"+str(theta)+".png")
         
     if test_relaxation:
         #test relaxation
