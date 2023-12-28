@@ -47,15 +47,19 @@ def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10
     Forces = lp.zeros((natoms, 3), dtype=lp.complex64)
 
     for k in range(nkp):
-        Ham,i,j, di, dj, phase = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
-        eigvalues, eigvectors = lp.linalg.eigh(Ham)
+        Ham = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
+        if use_cupy:
+            Ham = lp.asarray(Ham)
+            eigvalues, eigvectors = lp.linalg.eigh(Ham)
+            eigvalues = lp.asnumpy(eigvalues)
+            eigvectors = lp.asnumpy(eigvectors)
+        else:
+            eigvalues, eigvectors = lp.linalg.eigh(Ham)
         nocc = int(natoms / 2)
         Energy += 2 * lp.sum(eigvalues[:nocc])
-        Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvectors, params_str ,i,j, di, dj, phase)
-    if use_cupy:
-        return lp.asnumpy(Energy), lp.asnumpy(Forces)
-    else:
-        return Energy,Forces
+        Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvectors, params_str,kpoints[k,:] )
+
+    return Energy,Forces
 
 
 def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str, rcut=10):
@@ -63,8 +67,6 @@ def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str, r
     cell = lp.asarray(cell)
     mol_id = lp.asarray(mol_id)
     kpoints = lp.asarray(kpoints)
-    eV_per_hartree = 1 #27.211407953
-    #params = get_param_dict(params_str)
 
     recip_cell = get_recip_cell(cell)
     if kpoints.ndim == 1:
@@ -76,23 +78,22 @@ def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str, r
     Forces = lp.zeros((natoms, 3), dtype=lp.complex64)
     
     for k in range(nkp):
-        Ham,_,_, _, _, _ = gen_ham_ovrlp(atom_positions,  mol_id, cell, kpoints[k], params_str)
+        Ham = gen_ham_ovrlp(atom_positions,  mol_id, cell, kpoints[k], params_str)
         eigvalues, eigvectors = lp.linalg.eigh(Ham)
         nocc = int(natoms / 2)
-        Energy += 2 * lp.sum(eigvalues[:nocc])*eV_per_hartree
+        Energy += 2 * lp.sum(eigvalues[:nocc])
         Forces += get_hellman_feynman_fd(atom_positions,mol_id, cell, eigvectors, params_str,kpoints[k]) 
     if use_cupy:
         return lp.asnumpy(Energy), lp.asnumpy(Forces)
     else:
         return Energy,Forces
 
-def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str, rcut=10):
+def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str):
     atom_positions = lp.asarray(atom_positions)
     cell = lp.asarray(cell)
     kpoints = lp.asarray(kpoints)
     mol_id = lp.asarray(mol_id)
-    eV_per_hartree = 1 # 27.211407953
-    #params = get_param_dict(params_str)
+
     recip_cell = get_recip_cell(cell)
     if kpoints.ndim == 1:
         kpoints = lp.reshape(kpoints, (1,3))
@@ -103,9 +104,9 @@ def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str, rcut=
     evecs = lp.zeros((natoms, natoms, nkp), dtype=lp.complex64)
     
     for k in range(nkp):
-        Ham,_,_, _, _, _ = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k], params_str)
+        Ham = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k], params_str)
         eigvalues, eigvectors = lp.linalg.eigh(Ham)
-        evals[:, k] = eigvalues*eV_per_hartree
+        evals[:, k] = eigvalues
         evecs[:, :, k] = eigvectors
     if use_cupy:
         return lp.asnumpy(evals), lp.asnumpy(evecs)

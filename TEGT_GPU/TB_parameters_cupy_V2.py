@@ -91,8 +91,7 @@ def popov_hopping(dR):
     Vpp_pi -= lpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
-    #return valmat*eV_per_hart
-    return lp.linalg.norm(dR, axis=1)
+    return valmat*eV_per_hart
 
 def porezag_hopping(dR):
     dRn = lp.linalg.norm(dR, axis=1)
@@ -119,10 +118,42 @@ def porezag_hopping(dR):
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
 
-    #return valmat*eV_per_hart
-    return lp.linalg.norm(dR, axis=1)
+    return valmat*eV_per_hart
 
-def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
+"""def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
+    
+    Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
+    Input: 
+        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for intralayer in BOHR
+        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
+        i, j            - int   (n) list of atomic bases you are hopping between
+        di, dj          - int   (n) list of displacement indices for the hopping
+    Output:
+        hoppings        - float (n) list of hoppings for the given i, j, di, dj
+    
+    lattice_vectors = lp.array(lattice_vectors)
+    atomic_basis = lp.array(atomic_basis)
+    i = lp.array(i)
+    j = lp.array(j)
+    di = lp.array(di)
+    dj = lp.array(dj)
+    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
+    hoppings = [] #lp.zeros_like(i,dtype=lp.float64)
+    ntypes = [1,2]
+    for i_int,i_type in enumerate(ntypes):
+        for j_int,j_type in enumerate(ntypes):
+            if j_int<i_int:
+                continue
+            valid_indices = layer_types[i] == i_type
+            valid_indices &= layer_types[j] == j_type
+            if i_type==j_type:
+                hoppings[valid_indices] = porezag_hopping(disp[valid_indices])
+            else:
+                hop = popov_hopping(disp[valid_indices])
+                hoppings[valid_indices] = hop
+    return hoppings"""
+
+def popov(lattice_vectors, atomic_basis, i, j, di, dj):
     """
     Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
     Input: 
@@ -140,20 +171,32 @@ def popov(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     di = lp.array(di)
     dj = lp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = lp.zeros_like(i,dtype=lp.float64)
-    ntypes = [1,2]
-    for i_type in ntypes:
-        for j_type in ntypes:
-            valid_indices = layer_types[i] == i_type
-            valid_indices &= layer_types[j] == j_type
-            if i_type==j_type:
-                hoppings[valid_indices] = porezag_hopping(disp[valid_indices])
-            else:
-                hop = popov_hopping(disp[valid_indices])
-                hoppings[valid_indices] = hop
+    hoppings = popov_hopping(disp)
+                
     return hoppings
 
-def mk(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
+def porezag(lattice_vectors, atomic_basis, i, j, di, dj):
+    """
+    Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
+    Input: 
+        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for intralayer in BOHR
+        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
+        i, j            - int   (n) list of atomic bases you are hopping between
+        di, dj          - int   (n) list of displacement indices for the hopping
+    Output:
+        hoppings        - float (n) list of hoppings for the given i, j, di, dj
+    """
+    lattice_vectors = lp.array(lattice_vectors)
+    atomic_basis = lp.array(atomic_basis)
+    i = lp.array(i)
+    j = lp.array(j)
+    di = lp.array(di)
+    dj = lp.array(dj)
+    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
+    hoppings = porezag_hopping(disp)
+    return hoppings
+
+def mk(lattice_vectors, atomic_basis, i, j, di, dj):
     """
     Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
     Input: 
@@ -174,7 +217,7 @@ def mk(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     hoppings = moon([lp.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48)
     return hoppings
 
-def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
+def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj):
     lattice_vectors = lp.array(lattice_vectors)
     atomic_basis = lp.array(atomic_basis)
     i = lp.array(i)
@@ -187,5 +230,8 @@ def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj,layer_types=None):
     hoppings = -(dist-nn_dist)+2
     return hoppings
 
-def letb(lattice_vectors, atomic_basis, i, j, di, dj, layer_types=None):
+def letb_interlayer(lattice_vectors, atomic_basis, i, j, di, dj):
+    return None
+
+def letb_intralayer(lattice_vectors, atomic_basis, i, j, di, dj):
     return None

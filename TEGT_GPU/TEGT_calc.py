@@ -191,16 +191,18 @@ class TEGT_Calc(Calculator):
     def reduce_energy(self,results):
         total_force = np.zeros((self.natoms,3))
         total_energy = 0
-        for e, f in results: 
-            total_force += f
+        for e, f in results:
+            total_force += f.real
             total_energy += e
         return total_energy, total_force
 
     def run_tight_binding(self,atoms,force_type="force"):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
+        sym = atoms.get_chemical_symbols()
+        mol_id = atoms.get_array("mol-id")
+        tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
-        tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3),dtype=complex)
+        tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3))
         self.natoms = len(atoms)
         #this works across multiple nodes
 
@@ -213,15 +215,20 @@ class TEGT_Calc(Calculator):
         tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()"""
 
         #serial
+        results = []
         for i in range(self.nkp):
             e,f = tb_fxn(i)
-            tb_energy += e
-            tb_forces += f
+            #tb_energy += e
+            #tb_forces += f
+            results.append((e,f))
+        tb_energy, tb_forces = self.reduce_energy(results)
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
     def get_band_structure(self,atoms,kpoints):
         self.nkp = np.shape(kpoints)[0]
-        tb_fxn = self.get_tb_fxn(atoms.positions,atoms.get_chemical_symbols(),np.array(atoms.cell),
+        sym = atoms.get_chemical_symbols()
+        mol_id = atoms.get_array("mol-id")
+        tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),
                                  kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         self.natoms = len(atoms)
         """scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
