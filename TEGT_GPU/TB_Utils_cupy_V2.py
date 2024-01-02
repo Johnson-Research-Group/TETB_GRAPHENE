@@ -158,7 +158,7 @@ def get_helem(lattice_vectors, hopping_model,indi, indj, di, dj):
         return hopping
     return fxn
 
-def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, model_type,kpoint):
+def get_hellman_feynman_autograd(atomic_basis, layer_types, lattice_vectors, eigvec, model_type,kpoint):
     #construct density matrix
     natoms = len(layer_types)
     conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
@@ -206,12 +206,94 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, mode
                                   j[valid_indices], di[valid_indices], dj[valid_indices])
             gradH_fxn = jacobian(helem_fxn)
             gradH_tmp = gradH_fxn(atomic_basis)
+            print(gradH_tmp)
             rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis,lp.newaxis]
             Forces += -lp.sum(lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]*rho,axis=0).real
             #gradH[valid_indices,:,:] += lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]
     
     #Forces = -lp.sum(gradH   ,axis=0).real #* phases[:,lp.newaxis,lp.newaxis]
     return Forces
+
+def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, model_type,kpoint):
+    #construct density matrix
+    natoms = len(layer_types)
+    conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
+    nocc = natoms//2
+    fd_dist = 2*lp.eye(natoms)
+    fd_dist[nocc:,nocc:] = 0
+    density_matrix =  lp.conj(eigvec) @ fd_dist  @ eigvec.T
+
+    Forces = lp.zeros((natoms,3))
+    layer_type_set = set(layer_types)
+
+    diFull = []
+    djFull = []
+    extended_coords = []
+    for dx in [-1, 0, 1]:
+        for dy in [-1, 0, 1]:
+            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, lp.newaxis] * dx + lattice_vectors[1, lp.newaxis] * dy)
+            diFull += [dx] * natoms
+            djFull += [dy] * natoms
+    distances = cdist(atomic_basis, extended_coords)
+
+    gradH = lp.zeros((len(diFull),natoms,3))
+    for i_int,i_type in enumerate(layer_type_set):
+        for j_int,j_type in enumerate(layer_type_set):
+
+            if i_type==j_type:
+                if model_type["intralayer"] != "porezag":
+                    print("analytical gradients only implemented for porezag parameters, use autograd instead")
+                    exit()
+                hopping_model_grad = porezag_grad
+                cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
+            else:
+                if model_type["intralayer"] != "popov":
+                    print("analytical gradients only implemented for popov parameters, use autograd instead")
+                    exit()
+                hopping_model_grad = popov_grad
+                cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
+
+            indi, indj = lp.where((distances > 0.1) & (distances < cutoff))
+            di = lp.array(diFull)[indj]
+            dj = lp.array(djFull)[indj]
+            i  = lp.array(indi)
+            j  = lp.array(indj % natoms)
+            valid_indices = layer_types[i] == i_type
+            valid_indices &= layer_types[j] == j_type
+            ind_R_ = lp.stack((di[valid_indices],dj[valid_indices],lp.zeros_like(di[valid_indices])),axis=1)@lattice_vectors.T
+            rv = -atomic_basis[i[valid_indices],:]+atomic_basis[j[valid_indices],:]+ind_R_
+            phases = lp.exp((1.0j)*lp.dot(kpoint,rv.T))
+    
+            #helem_fxn = get_helem(lattice_vectors, hopping_model,i[valid_indices], 
+            #                      j[valid_indices], di[valid_indices], dj[valid_indices])
+            #gradH_fxn = jacobian(helem_fxn)
+            #gradH_tmp = gradH_fxn(atomic_basis)
+            grad_hop = get_grad_hop(atomic_basis,lattice_vectors,hopping_model_grad,i[valid_indices], 
+                                  j[valid_indices], di[valid_indices], dj[valid_indices])
+            rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis] #,lp.newaxis]
+            #Forces += -lp.sum(lp.nan_to_num(gradH)*phases[:,lp.newaxis,lp.newaxis]*rho,axis=0).real
+            gradH = grad_hop * phases[:,lp.newaxis] * rho
+            for atom_ind in range(natoms):
+                use_ind = np.squeeze(np.where(i[valid_indices]==atom_ind))
+                Forces[atom_ind,:] += lp.sum(2*gradH[use_ind,:],axis=0).real
+            #gradH[valid_indices,:,:] += lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]
+    
+    #Forces = -lp.sum(gradH   ,axis=0).real #* phases[:,lp.newaxis,lp.newaxis]
+    return Forces
+
+#@njit
+def get_grad_hop(pos,lattice_vectors,hopping_model_grad,ind_i,ind_j,di,dj):
+    conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
+    lattice_vectors = lp.array(lattice_vectors)*conversion
+    pos = pos*conversion
+    natoms = np.shape(pos)[0]
+    #gradH = np.zeros((len(i),natoms,3))
+    #for i in range(natoms):
+    #    #get gradients in hoppings for all neighbors of atom i
+    #    sub_ind = np.where(ind_i==i)
+    #    gradH[i,:] = hopping_model_grad(lattice_vectors, pos, ind_i[sub_ind], ind_j[sub_ind], di[sub_ind], dj[sub_ind])
+    gradH = hopping_model_grad(lattice_vectors, pos, ind_i, ind_j, di, dj)
+    return gradH
 
 def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type,kpoint):
     dr = 1e-4

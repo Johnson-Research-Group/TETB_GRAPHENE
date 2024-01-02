@@ -11,7 +11,10 @@ else:
 import numpy as np
 import h5py
 import pandas as pd
+import numpy as np
+from numba import njit
 
+@njit
 def nnmat(lattice_vectors, atomic_basis):
     """
     Build matrix which tells you relative coordinates
@@ -38,7 +41,7 @@ def nnmat(lattice_vectors, atomic_basis):
         nnmat[i] = displacements[ind[1:4]]
 
     return nnmat
-
+@njit
 def ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """ 
     Converts displacement indices to physical distances
@@ -58,7 +61,7 @@ def ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj):
     dxy = lp.linalg.norm(displacement_vector_xy, axis = 1)
     dz = lp.abs(displacement_vector_z)
     return dxy, dz
-
+@njit
 def ix_to_disp(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """ 
     Converts displacement indices to physical distances
@@ -71,7 +74,7 @@ def ix_to_disp(lattice_vectors, atomic_basis, di, dj, ai, aj):
                           dj[:, lp.newaxis] * lattice_vectors[1] +\
                           atomic_basis[aj] - atomic_basis[ai]
     return displacement_vector
-
+#@njit
 def partition_tb(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """
     Given displacement indices and geometry,
@@ -95,7 +98,7 @@ def partition_tb(lattice_vectors, atomic_basis, di, dj, ai, aj):
     t00 = (distances < 0.95 * min_distance) | (distances > 1.05 * 2 * min_distance)
 
     return t01_ix, t02_ix, t03_ix, t00
-
+@njit
 def triangle_height(a, base):
     """
     Give area of a triangle given two displacement vectors for 2 sides
@@ -106,7 +109,7 @@ def triangle_height(a, base):
     area = lp.abs(area)/2
     height = 2 * area / lp.linalg.norm(base)
     return height
-
+#@njit
 def t01_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     # Compute NN distances
     r = di[:, lp.newaxis] * lattice_vectors[0] + dj[:, lp.newaxis] * lattice_vectors[1] +\
@@ -114,7 +117,7 @@ def t01_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     #r[:, -1] = 0 # Project into xy-plane
     a = lp.linalg.norm(r, axis = 1)
     return pd.DataFrame({'a': a})
-
+#@njit
 def t02_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     # Compute NNN distances
     r = di[:, lp.newaxis] * lattice_vectors[0] + dj[:, lp.newaxis] * lattice_vectors[1] +\
@@ -134,7 +137,7 @@ def t02_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
         h1.append(triangle_height(nn[ind[0]], r[i]))
         h2.append(triangle_height(nn[ind[1]], r[i]))
     return pd.DataFrame({'h1': h1, 'h2': h2, 'b': b})
-    
+#@njit
 def t03_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """
     Compute t03 descriptors
@@ -171,7 +174,7 @@ def t03_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
         l.append((a + b + d + e)/4)
         h.append((h1 + h2 + h3 + h4)/4)
     return pd.DataFrame({'c': c, 'h': h, 'l': l})
-
+#@njit
 def descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """ 
     Build bi-layer descriptors given geometric quantities
@@ -188,7 +191,7 @@ def descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     t02 = t02_descriptors(lattice_vectors, atomic_basis, di[partition[1]], dj[partition[1]], ai[partition[1]], aj[partition[1]])
     t03 = t03_descriptors(lattice_vectors, atomic_basis, di[partition[2]], dj[partition[2]], ai[partition[2]], aj[partition[2]])
     return t01, t02, t03
-
+#@njit
 def ix_to_orientation(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """
     Converts displacement indices to orientations of the 
@@ -217,7 +220,7 @@ def ix_to_orientation(lattice_vectors, atomic_basis, di, dj, ai, aj):
         theta_12.append(lp.pi - theta_jnn[0])
         theta_21.append(theta_inn[0])
     return theta_12, theta_21
-
+#@njit
 def descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """
     Build bi-layer descriptors given geometric quantities
