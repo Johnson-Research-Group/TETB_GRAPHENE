@@ -206,12 +206,9 @@ def get_hellman_feynman_autograd(atomic_basis, layer_types, lattice_vectors, eig
                                   j[valid_indices], di[valid_indices], dj[valid_indices])
             gradH_fxn = jacobian(helem_fxn)
             gradH_tmp = gradH_fxn(atomic_basis)
-            print(gradH_tmp)
             rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis,lp.newaxis]
             Forces += -lp.sum(lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]*rho,axis=0).real
-            #gradH[valid_indices,:,:] += lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]
-    
-    #Forces = -lp.sum(gradH   ,axis=0).real #* phases[:,lp.newaxis,lp.newaxis]
+
     return Forces
 
 def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, model_type,kpoint):
@@ -241,16 +238,18 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, mode
         for j_int,j_type in enumerate(layer_type_set):
 
             if i_type==j_type:
-                if model_type["intralayer"] != "porezag":
-                    print("analytical gradients only implemented for porezag parameters, use autograd instead")
-                    exit()
+                #if model_type["intralayer"] != "porezag":
+                #    print("analytical gradients only implemented for porezag parameters, use autograd instead")
+                #    exit()
                 hopping_model_grad = porezag_grad
                 cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
+                hopping_model = models_functions_intralayer[model_type["intralayer"]]
             else:
-                if model_type["intralayer"] != "popov":
-                    print("analytical gradients only implemented for popov parameters, use autograd instead")
-                    exit()
+                #if model_type["intralayer"] != "popov":
+                #    print("analytical gradients only implemented for popov parameters, use autograd instead")
+                    #exit()
                 hopping_model_grad = popov_grad
+                hopping_model = models_functions_interlayer[model_type["interlayer"]]
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
 
             indi, indj = lp.where((distances > 0.1) & (distances < cutoff))
@@ -268,17 +267,24 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, mode
             #                      j[valid_indices], di[valid_indices], dj[valid_indices])
             #gradH_fxn = jacobian(helem_fxn)
             #gradH_tmp = gradH_fxn(atomic_basis)
+            #dH_autograd = np.zeros((natoms,natoms))
+            #for index in range(natoms):
+            #dH_autograd[i[valid_indices],j[valid_indices]] += gradH_tmp[:,1,0]
+            #print(np.round(dH_autograd,decimals=2),"\n")
             grad_hop = get_grad_hop(atomic_basis,lattice_vectors,hopping_model_grad,i[valid_indices], 
                                   j[valid_indices], di[valid_indices], dj[valid_indices])
             rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis] #,lp.newaxis]
-            #Forces += -lp.sum(lp.nan_to_num(gradH)*phases[:,lp.newaxis,lp.newaxis]*rho,axis=0).real
+            dH_analytical = np.zeros((natoms,natoms))
+            dH_analytical[i[valid_indices],j[valid_indices]] = grad_hop[:,0]
+            #print(np.round(dH_analytical,2))
             gradH = grad_hop * phases[:,lp.newaxis] * rho
             for atom_ind in range(natoms):
                 use_ind = np.squeeze(np.where(i[valid_indices]==atom_ind))
-                Forces[atom_ind,:] += lp.sum(2*gradH[use_ind,:],axis=0).real
-            #gradH[valid_indices,:,:] += lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]
-    
-    #Forces = -lp.sum(gradH   ,axis=0).real #* phases[:,lp.newaxis,lp.newaxis]
+                ave_gradH = gradH[use_ind,:]
+                if ave_gradH.ndim!=2:
+                    Forces[atom_ind,:] += 2*ave_gradH.real
+                else:
+                    Forces[atom_ind,:] += lp.sum(2*ave_gradH,axis=0).real
     return Forces
 
 #@njit

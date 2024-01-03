@@ -23,7 +23,8 @@ def get_atom_pairs(n,a):
     pos=np.zeros((int(2*n),3))
     mol_id = np.ones(int(2*n))
     for i in range(n):
-        sym+="BB"
+        sym+="BTi"
+        mol_id[i+n]=2
         pos[i,:] = np.array([i*a,0,0])
         pos[i+n,:] = np.array([i*a,a,0])
     #'BBBBTiTiTiTi'(0,a,0),(a,2*a,0),(2*a,3*a,0),(3*a,4*a,0)
@@ -38,7 +39,8 @@ def get_random_atoms(n,a):
     pos=np.zeros((int(2*n),3))
     mol_id = np.ones(int(2*n))
     for i in range(n):
-        sym+="BB"
+        sym+="BTi"
+        mol_id[i+n]=2
         pos[i,:] = np.array([i*a+np.random.rand(),0,0])
         pos[i+n,:] = np.array([i*a+np.random.rand(),a,0])
     #'BBBBTiTiTiTi'(0,a,0),(a,2*a,0),(2*a,3*a,0),(3*a,4*a,0)
@@ -138,19 +140,19 @@ if __name__=="__main__":
     
     if test_tbforces:
         #test forces pairwise
-        a_ = [1.4] #np.linspace(1.2,1.6,3)
+        a_ = np.linspace(1.2,1.6,3)
         n_ = [1] #np.arange(2,4,1)
         n=4
         
         for i,a in enumerate(a_):
             #    for j,n in enumerate(n_):
                 #atoms = get_stack_atoms(n,a)
-            atoms = get_atom_pairs(n,a)
-            #atoms = get_random_atoms(n,a)
+            #atoms = get_atom_pairs(n,a)
+            atoms = get_random_atoms(n,a)
             pos = atoms.positions
             print("n= ",n," a= ",a)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
-            print("hellman-feynman forces = ",tb_forces)
+            print("hellman-feynman forces = ",np.round(tb_forces,decimals=2))
             #plt.quiver(pos[:,0],pos[:,1],tb_forces[:,0],tb_forces[:,1])
             #plt.savefig("tb_force_quiver_hf"+str(a)+".png")
             #plt.clf()
@@ -160,7 +162,7 @@ if __name__=="__main__":
             #plt.quiver(pos[:,0],pos[:,1],tb_forces_fd[:,0],tb_forces_fd[:,1])
             #plt.savefig("tb_force_quiver_fd"+str(a)+".png")
             #plt.clf()
-            print("finite-diff forces = ",tb_forces_fd)
+            print("finite-diff forces = ",np.round(tb_forces_fd,decimals=2))
             #print("ratio = ",np.nan_to_num(tb_forces_fd/tb_forces))
             print("\n\n\n")
         #print("Julia forces  fd (natoms "+str(n)+")= ",tb_forces_fd[:4,:])

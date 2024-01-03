@@ -249,10 +249,12 @@ class TEGT_Calc(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
+        
         if self.use_tb:
+            print("getting forces and energies")
             tb_Energy,tb_forces = self.run_tight_binding(atoms)
-            Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= self.run_lammps(atoms)
-
+            #Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= self.run_lammps(atoms)
+            Lammps_forces,Lammps_potential_energy,Lammps_tot_energy=  np.zeros((len(atoms),3)), 0 , 0
             self.results['forces'] = tb_forces + Lammps_forces
             self.results['potential_energy'] = tb_Energy + Lammps_potential_energy
             self.results['energy'] = tb_Energy + Lammps_tot_energy

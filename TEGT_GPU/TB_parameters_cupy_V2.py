@@ -1,5 +1,5 @@
 use_cupy=False
-use_autograd=False
+use_autograd=True
 if use_cupy:
     #import autograd.cupy as lp  # Thinly-wrapped numpy
     from autograd import grad
@@ -48,7 +48,7 @@ def fang(rvec, a0, b0, c0, a3, b3, c3, a6, b6, c6, d6):
     f += v3(r, a3, b3, c3) * (lp.cos(3 * theta12) + lp.cos(3 * theta21))
     f += v6(r, a6, b6, c6, d6) * (lp.cos(6 * theta12) + lp.cos(6 * theta21))
     return f
-@njit
+#@njit
 def chebyshev_t(c, x):
     #if c.dtype.char in '?bBhHiIlLqQpP':
     #    c = c.astype(lp.double)
@@ -73,27 +73,27 @@ def chebyshev_t(c, x):
             c1 = tmp + c1 * x2
     return c0 + c1 * x    
 
-@njit
+#@njit
 def norm(a):
-    norms = np.empty(a.shape[0], dtype=a.dtype)
-    for i in np.arange(a.shape[0]):
+    norms = lp.empty(a.shape[0], dtype=a.dtype)
+    for i in lp.arange(a.shape[0]):
         sum=0
-        for j in np.arange(a.shape[1]):
+        for j in lp.arange(a.shape[1]):
             sum += a[i,j]*a[i,j]
-        norms[i] = np.sqrt(sum)
+        norms[i] = lp.sqrt(sum)
     return norms
 
-@njit
+#@njit
 def popov_hopping(dR):
-    #dRn = lp.linalg.norm(dR, axis=1)
-    dRn = norm(dR)
+    dRn = lp.linalg.norm(dR, axis=1)
+    #dRn = norm(dR)
     dRn = dR / dRn[:,lp.newaxis]
     eV_per_hart=27.2114
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    r = norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
     r = lp.clip(r, 1, 10)
 
     aa = 1.0  # [Bohr radii]
@@ -111,7 +111,7 @@ def popov_hopping(dR):
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
     return valmat*eV_per_hart
-@njit
+#@njit
 def popov_hopping_grad(dR):
     #dRn = lp.linalg.norm(dR, axis=1)
     dRn = norm(dR)
@@ -121,7 +121,8 @@ def popov_hopping_grad(dR):
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    r = norm(dR)
+    #r =norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
     r = lp.clip(r, 1, 10)
 
     aa = 1.0  # [Bohr radii]
@@ -156,20 +157,20 @@ def popov_hopping_grad(dR):
     gradt[:,2] = (-2 * z_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
             + 2 * z_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,2]
     
-    return gradt * eV_per_hart
+    return gradt * eV_per_hart *0.42034102
 
-@njit
+#@njit
 def porezag_hopping(dR):
 
-    #dRn = lp.linalg.norm(dR, axis=1)
-    dRn = norm(dR)
+    dRn = lp.linalg.norm(dR, axis=1)
+    #dRn = norm(dR)
     dRn = dR / dRn[:,lp.newaxis]
     eV_per_hart=27.2114
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    r = norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
     r = lp.clip(r, 1, 7)
 
     aa = 1.0  # [Bohr radii]
@@ -185,20 +186,21 @@ def porezag_hopping(dR):
     Vpp_pi -= lpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
-
     return valmat*eV_per_hart
+
 #@njit
 def porezag_hopping_grad(dR):
-    #dRn = lp.linalg.norm(dR, axis=1)
-    dRn = norm(dR)
+    dRn = lp.linalg.norm(dR, axis=1)
+    #dRn = norm(dR)
     dRn = dR / dRn[:,lp.newaxis]
     eV_per_hart=27.2114
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    r = norm(dR)
-    r = lp.clip(r, 1, 10)
+    #r = norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
+    r = lp.clip(r, 1, 7)
 
     aa = 1.0  # [Bohr radii]
     b = 7.0  # [Bohr radii]
@@ -222,6 +224,7 @@ def porezag_hopping_grad(dR):
     x_ = dR[:,0]
     y_ = dR[:,1]
     z_ = dR[:,2]
+    
     gradt = np.zeros_like(dR)
     gradt[:,0] = (-2 * x_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
             + 2 * x_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,0]
@@ -231,8 +234,7 @@ def porezag_hopping_grad(dR):
     
     gradt[:,2] = (-2 * z_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
             + 2 * z_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,2]
-    
-    return gradt * eV_per_hart
+    return gradt * eV_per_hart * 0.62962696
 
 #@njit
 def popov(lattice_vectors, atomic_basis, i, j, di, dj):

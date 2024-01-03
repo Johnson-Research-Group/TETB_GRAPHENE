@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from numba import njit
 
-@njit
+#@njit
 def nnmat(lattice_vectors, atomic_basis):
     """
     Build matrix which tells you relative coordinates
@@ -41,7 +41,7 @@ def nnmat(lattice_vectors, atomic_basis):
         nnmat[i] = displacements[ind[1:4]]
 
     return nnmat
-@njit
+#@njit
 def ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """ 
     Converts displacement indices to physical distances
@@ -61,7 +61,7 @@ def ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj):
     dxy = lp.linalg.norm(displacement_vector_xy, axis = 1)
     dz = lp.abs(displacement_vector_z)
     return dxy, dz
-@njit
+#@njit
 def ix_to_disp(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """ 
     Converts displacement indices to physical distances
