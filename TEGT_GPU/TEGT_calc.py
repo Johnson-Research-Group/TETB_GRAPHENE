@@ -22,8 +22,8 @@ import os
 import json
 import subprocess
 from ase.calculators.calculator import Calculator, all_changes
-#from lammps import PyLammps
-import ase as PyLammps
+from lammps import PyLammps
+#import ase as PyLammps
 import joblib
 from joblib import Parallel, delayed
 #import TEGT_GPU
@@ -93,7 +93,7 @@ class TEGT_Calc(Calculator):
         ntypes = len(set(atoms.get_chemical_symbols()))
         data_file = os.path.join(self.output,"tegt.data")
         ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
-        L = PyLammps()
+        L = PyLammps(verbose=False)
         L.command("units		metal")
         L.command("atom_style	full")
         L.command("atom_modify    sort 0 0.0")  # This is to avoid sorting the coordinates
@@ -113,15 +113,16 @@ class TEGT_Calc(Calculator):
         ######################## Potential defition ########################
         
         if ntypes ==2 and self.use_tb:
-            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo/sigma 3")
+            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo 3")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
-            L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
+            #L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
+            L.command("pair_coeff      * * airebo "+self.rebo_file+" C C")
         elif ntypes==2 and not self.use_tb:
             L.command("pair_style       hybrid/overlay kolmogorov/crespi/full 10.0 0 rebo")
             L.command("pair_coeff       * *   kolmogorov/crespi/full  "+self.kc_file+"   C C") # long-range
             L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
         else:
-            L.command("pair_style       airebo/sigma 3")
+            L.command("pair_style       airebo 3")
             L.command("pair_coeff      * * "+self.rebo_file+" C")
 
         ####################################################################
@@ -215,13 +216,19 @@ class TEGT_Calc(Calculator):
         tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()"""
 
         #serial
-        results = []
+        """results = []
         for i in range(self.nkp):
             e,f = tb_fxn(i)
             #tb_energy += e
             #tb_forces += f
             results.append((e,f))
-        tb_energy, tb_forces = self.reduce_energy(results)
+        tb_energy, tb_forces = self.reduce_energy(results)"""
+        #joblib
+        ncpu = joblib.cpu_count()
+        output = Parallel(n_jobs=ncpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
+        for i in range(self.nkp):
+            tb_energy += np.squeeze(output[i][0])
+            tb_forces += np.squeeze(output[i][1].real)
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
     def get_band_structure(self,atoms,kpoints):
@@ -243,6 +250,13 @@ class TEGT_Calc(Calculator):
             tmp_evals,tmp_evecs = tb_fxn(i)
             evals[:,i] = np.squeeze(tmp_evals)
             evecs[:,:,i] = np.squeeze(tmp_evecs)
+        
+        #joblib
+        """ncpu = joblib.cpu_count()
+        output = Parallel(n_jobs=4)(delayed(tb_fxn)(i) for i in range(self.nkp))
+        for i in range(self.nkp):
+            evals[:,i] = np.squeeze(output[i][0])
+            evecs[:,:,i] = np.squeeze(output[i][1])"""
         return evals,evecs
 
     def calculate(self, atoms, properties=None,system_changes=all_changes):
@@ -253,8 +267,8 @@ class TEGT_Calc(Calculator):
         if self.use_tb:
             print("getting forces and energies")
             tb_Energy,tb_forces = self.run_tight_binding(atoms)
-            #Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= self.run_lammps(atoms)
-            Lammps_forces,Lammps_potential_energy,Lammps_tot_energy=  np.zeros((len(atoms),3)), 0 , 0
+            Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= self.run_lammps(atoms)
+            #Lammps_forces,Lammps_potential_energy,Lammps_tot_energy=  np.zeros((len(atoms),3)), 0 , 0
             self.results['forces'] = tb_forces + Lammps_forces
             self.results['potential_energy'] = tb_Energy + Lammps_potential_energy
             self.results['energy'] = tb_Energy + Lammps_tot_energy

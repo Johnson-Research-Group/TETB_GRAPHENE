@@ -25,8 +25,8 @@ def get_atom_pairs(n,a):
     for i in range(n):
         sym+="BTi"
         mol_id[i+n]=2
-        pos[i,:] = np.array([i*a,0,0])
-        pos[i+n,:] = np.array([i*a,a,0])
+        pos[i,:] = np.array([0,0,0])
+        pos[i+n,:] = np.array([0,0,(i+1)*a])
     #'BBBBTiTiTiTi'(0,a,0),(a,2*a,0),(2*a,3*a,0),(3*a,4*a,0)
     atoms = Atoms(sym,positions=pos, #,(2*a,0,0),(a,a,0)],
                   cell=[L,L,L])
@@ -65,13 +65,13 @@ def get_twist_geom(t,sep,a=2.46):
 
 def get_graphite(s,a=2.46):
     atoms = Graphite(symbol = 'B',latticeconstant={'a':a,'c':2*s},
-               size=(1,2,1))
+               size=(1,1,1))
     pos = atoms.positions
     sym = atoms.get_chemical_symbols()
     mean_z = np.mean(pos[:,2])
     top_layer_ind = np.squeeze(np.where(pos[:,2]>mean_z))
-    mol_id = np.ones(len(atoms))
-    mol_id[top_layer_ind] +=1
+    mol_id = np.ones(len(atoms),dtype=np.int64)
+    mol_id[top_layer_ind] =2
     atoms.set_array('mol-id',mol_id)
     for ind in top_layer_ind:
         sym[ind] = "Ti"
@@ -106,11 +106,9 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
         ediff = np.array(all_evals).copy()
         ediff -= efermi
         fermi_ind = np.argmin(np.abs(ediff))-1
-        
-    # plot first and second band
+
     for n in range(np.shape(all_evals)[0]):
         ax.plot(k_dist,all_evals[n,:]-efermi,c=colors[0])
-                
         
     # make an PDF figure of a plot
     fig.tight_layout()
@@ -120,18 +118,19 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=True
-    test_tbenergy=False
+    test_tbforces=False
+    test_tbenergy=True
     test_lammps=False
     test_bands=False
     test_relaxation=False
     test_scaling=False
     theta = 21.78
+    #theta = 5.09
     
     
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
-                          "kmesh":(1,1,1),
+                          "kmesh":(15,15,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -243,22 +242,39 @@ if __name__=="__main__":
             #atoms = get_twist_geom(21.78,s,a=2.46)
             #test julia interface
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+            #exit()
             #evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
             #nocc = np.shape(evals)[0]//2
             #tb_energy = 2*np.sum(evals[:nocc,:])/np.shape(kpoints)[0]
             julia_energies_sep[i] = tb_energy/len(atoms)
             
             
-        plt.plot(layer_sep,popov_energies_sep-popov_energies_sep[-1],color="black",label="reference")
-        plt.plot(layer_sep,(julia_energies_sep-julia_energies_sep[-1]),color="red",label="julia") 
+        plt.plot(layer_sep,popov_energies_sep-popov_energies_sep[-1],color="black",label="popov reference")
+        plt.plot(layer_sep,(julia_energies_sep-julia_energies_sep[-1]),color="red",label="python") 
+        plt.xlabel("interlayer separation (Angstroms)")
+        plt.ylabel("interlayer energy (eV)")
         plt.legend()
         plt.savefig("layer_sep_energies.png")
         plt.clf()
-       
+
         print("RMSE latte, julia tight binding energy = ",np.linalg.norm(
             (julia_energies_sep-julia_energies_sep[-1])-(popov_energies_sep-popov_energies_sep[-1])))
         print("difference in energies at d=3.44, = ",(julia_energies_sep[2]-julia_energies_sep[-1])
               -(popov_energies_sep[2]-popov_energies_sep[-1]))
+        
+        """a_ = np.linspace(2.35,2.6,20)
+        s= 3.35
+        python_energies = np.zeros_like(a_)
+        for i,a in enumerate(a_):
+            atoms = get_graphite(s,a=a)
+            tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+            python_energies[i] = tb_energy/len(atoms)
+
+        plt.plot(a_,python_energies-python_energies[-1])
+        plt.savefig("intralayer_energies.png")
+        plt.clf()"""
+
+            
     if test_lammps:
         #test lammps interface
         atoms = get_twist_geom(theta,3.35)
@@ -282,14 +298,24 @@ if __name__=="__main__":
         plot_bands(evals,kdat,erange=5,title=r'$\theta=$'+str(theta)+r'$^o$',figname="theta_"+str(theta)+".png")
         
     if test_relaxation:
+        from ase.optimize import BFGS
         #test relaxation
+        theta = 2.88
         atoms = get_twist_geom(theta,3.35)
+        #atoms = get_graphite(3.35)
         atoms.calc = calc_obj
-        calc_folder = "theta_21_78"
+        calc_folder = "theta_2_88"
+        #calc_folder = "theta_5_09"
         if not os.path.exists(calc_folder):
             os.mkdir(calc_folder)
+        #else:
+        #    atoms = ase.io.read(os.path.join(calc_folder,"theta_"+str(theta)+".traj"))
         #energy = atoms.get_potential_energy()
-        dyn = FIRE(atoms,
+        #dyn = FIRE(atoms,
+        #           trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
+        #           logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
+        dyn = BFGS(atoms,
                    trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
-                   logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
+                   logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"),
+                   restart = os.path.join(calc_folder,"theta_"+str(theta)+".restart"))
         dyn.run(fmax=0.00005)

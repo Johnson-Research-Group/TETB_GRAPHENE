@@ -14,3 +14,5 @@ make yes-manybody;
 make yes-interlayer;
 make -j20 mode=shared serial;
 make install-python
+#optionally enforce version
+#make install-python PYTHON=python3.10

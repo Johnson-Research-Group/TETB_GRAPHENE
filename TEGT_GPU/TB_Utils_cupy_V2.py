@@ -35,64 +35,7 @@ models_cutoff_intralayer={'letb':10,
                         'porezag':3.7,
                         "nn":3}
 
-"""def compute_hoppings(lattice_vectors, atomic_basis, hopping_model,kpoint,layer_types=None):
-    
-    Compute hoppings in a hexagonal environment of the computation cell 
-    Adequate for large unit cells (> 100 atoms)
-    Input:
-        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for graphene in BOHR
-        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
-        layer_types     - int   (natoms) layer index of atom i
-        hopping_model   - model for computing hoppings
-
-    Output:
-        i, j            - int   (n) list of atomic bases you are hopping between
-        di, dj          - int   (n) list of displacement indices for the hopping
-        hoppings        - float (n) list of hoppings for the given i, j, di, dj
-    
-
-    natom = len(atomic_basis)
-    di = []
-    dj = []
-    extended_coords = []
-    for dx in [-1, 0, 1]:
-        for dy in [-1, 0, 1]:
-            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, lp.newaxis] * dx + lattice_vectors[1, lp.newaxis] * dy)
-            di += [dx] * natom
-            dj += [dy] * natom
-    distances = cdist(atomic_basis, extended_coords)
-    indi, indj = lp.where((distances > 0.1) & (distances < 10)) # 10 Bohr cutoff
-    di = lp.array(di)[indj]
-    dj = lp.array(dj)[indj]
-    i  = lp.array(indi)
-    j  = lp.array(indj % natom)
-    hoppings = hopping_model(lattice_vectors, atomic_basis,i, j, di, dj, layer_types=layer_types) / 2 # Divide by 2 since we are double counting every pair
-    disp = di[:, lp.newaxis] * lattice_vectors[0] +\
-                          dj[:, lp.newaxis] * lattice_vectors[1] +\
-                          atomic_basis[j] - atomic_basis[i]
-    kpoint = kpoint #@lattice_vectors.T
-    #phase = lp.exp(1j * lp.dot(kpoint, disp.T))
-    Ham = lp.zeros((natom,natom),dtype=lp.complex64)
-    #Ham_elem = hoppings * phase #multiply element wise
-    #Ham[i,j] = Ham_elem
-    ind_R_ = lp.stack((di,dj,lp.zeros_like(di)),axis=1)@lattice_vectors.T
-    rv = -atomic_basis[i,:]+atomic_basis[j,:]+ind_R_
-    phases = lp.exp((1.0j)*lp.dot(kpoint,rv.T))
-    #Ham[i,j] += hoppings * phases
-    #Ham[j,i] += lp.conj(hoppings*phases)
-    for index,hopping in enumerate(hoppings):
-        ind_R= ind_R_[index,:]
-        # vector from one site to another
-        rv=-atomic_basis[i[index],:]+atomic_basis[j[index],:]+ind_R
-        # Calculate the hopping, see details in info/tb/tb.pdf
-        phase=lp.exp((1.0j)*lp.dot(kpoint,rv))
-        amp=hopping*phase
-        # add this hopping into a matrix and also its conjugate
-        Ham[i[index],j[index]]+=amp
-        Ham[j[index],i[index]]+=amp.conjugate()
-    return Ham, i,j, di, dj, phases"""
-
-def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
+def gen_ham_ovrlp_vector(atom_positions, layer_types, cell, kpoint, model_type):
     """
     Returns a pythtb model object for a given ASE atomic configuration 
     Input:
@@ -102,7 +45,7 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
         gra - PythTB model describing hoppings between atoms using model_type        
     """
     
-    conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
+    conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
     lattice_vectors = lp.asarray(cell)*conversion
     atomic_basis = lp.asarray(atom_positions)*conversion
     kpoint = lp.asarray(kpoint)/conversion
@@ -121,33 +64,124 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
             djFull += [dy] * natom
     distances = cdist(atomic_basis, extended_coords)
     
-    Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
+    #Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
+    Ham = lp.zeros((natom,natom),dtype=lp.complex64)
+    dist_table = lp.zeros((natom,natom))
+    
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
             if i_type==j_type:
                 hopping_model = models_functions_intralayer[model_type["intralayer"]]
                 cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
+                p=1
             else:
                 hopping_model = models_functions_interlayer[model_type["interlayer"]]
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-
-            indi, indj = lp.where((distances > 0.1) & (distances < cutoff))
+                p=-1
+            indi, indj = lp.where((distances > 0.1)  & (distances < cutoff))
             di = lp.array(diFull)[indj]
             dj = lp.array(djFull)[indj]
             i  = lp.array(indi)
             j  = lp.array(indj % natom)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
-            ind_R_ = lp.stack((di[valid_indices],dj[valid_indices],lp.zeros_like(di[valid_indices])),axis=1)@lattice_vectors.T
-            rv = -atomic_basis[i[valid_indices],:]+atomic_basis[j[valid_indices],:]+ind_R_
-            phases = lp.exp((1.0j)*lp.dot(kpoint,rv.T))
+            valid_indices &= i!=j
+            #ind_R_ = lp.stack((di[valid_indices],dj[valid_indices],lp.zeros_like(di[valid_indices])),axis=1)@lattice_vectors.T
+            #rv = -atomic_basis[i[valid_indices],:]+atomic_basis[j[valid_indices],:]+ind_R_
+            disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
+                                           i[valid_indices], j[valid_indices])
+            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
 
             hoppings = hopping_model(lattice_vectors, atomic_basis,i[valid_indices], 
                                   j[valid_indices], di[valid_indices], dj[valid_indices])/2  # Divide by 2 since we are double counting every pair
             Ham[i[valid_indices],j[valid_indices]] += hoppings * phases
             Ham[j[valid_indices],i[valid_indices]] += lp.conj(hoppings*phases)
+            dist_table[i[valid_indices],j[valid_indices]] = np.linalg.norm(disp,axis=1)
+            dist_table[j[valid_indices],i[valid_indices]] = np.linalg.norm(disp,axis=1)
 
-    return Ham
+    #plt.imshow(Ham.real)
+    #plt.colorbar()
+    #plt.savefig("ham_vector.png")
+    #plt.clf()
+
+    #plt.imshow(dist_table)
+    #plt.colorbar()
+    #plt.savefig("dist_table.png")
+    #plt.clf()
+
+    return Ham, np.eye(np.shape(Ham)[0])
+
+def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
+    """
+    Returns a pythtb model object for a given ASE atomic configuration 
+    Input:
+        ase_atoms - ASE object for the periodic system
+        model_type - 'letb' or 'mk'
+    Output:
+        gra - PythTB model describing hoppings between atoms using model_type        
+    """
+    
+    conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
+    lattice_vectors = lp.asarray(cell)*conversion
+    atomic_basis = lp.asarray(atom_positions)*conversion
+    kpoint = lp.asarray(kpoint)/conversion
+
+    layer_types = lp.asarray(layer_types)
+    layer_type_set = set(layer_types)
+
+    natom = len(atomic_basis)
+    
+    Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
+    Overlap = lp.eye(natom,dtype = lp.complex64)
+    for indi in range(natom):
+        for indj in range(natom):
+            if indj<=indi:
+                continue
+
+            if layer_types[indi]==layer_types[indj]:
+                hopping_model = porezag_hopping
+                overlap_model = porezag_overlap
+                cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
+            else:
+                hopping_model = popov_hopping
+                overlap_model = popov_overlap
+                cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
+
+            min_dist = 100
+            n=0
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    for dz in [-1,0,1]:
+                        ind_R_ = dx*lattice_vectors[0,:] + dy*lattice_vectors[1,:] + dz*lattice_vectors[2,:]
+                        rv = -atomic_basis[indi,:]+atomic_basis[indj,:]+ind_R_
+                        if np.linalg.norm(rv)<min_dist:
+                            disp = rv
+                            min_dist = np.linalg.norm(rv)
+            if np.linalg.norm(disp)>cutoff:
+                continue
+            phases = lp.exp((1.0j)*lp.dot(kpoint,disp))
+            hoppings = np.squeeze(hopping_model([disp])) * phases  
+            overlap_elem = np.squeeze(overlap_model([disp])) * phases
+            #dxy = np.linalg.norm(disp[:2])
+            #dz = disp[-1]
+            #hoppings = np.squeeze(moon([lp.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48))* phases
+            #if layer_types[indi]==layer_types[indj]:
+            #    plt.scatter(np.linalg.norm(disp),hoppings,c="red")
+            #else:
+            #    plt.scatter(np.linalg.norm(disp),hoppings,c="black")
+            Overlap[indi,indj] =   overlap_elem 
+            Overlap[indj,indi] =  lp.conj(overlap_elem) 
+            Ham[indi,indj] = hoppings 
+            Ham[indj,indi] = lp.conj(hoppings)
+    #Ham = Ham + Ham.conj().T 
+    #Overlap = Overlap + Overlap.conj().T 
+    #eV_per_hart=27.2114
+    #plt.imshow(Overlap.real/eV_per_hart)
+    #plt.colorbar()
+    #plt.clim(0,-10)
+    #plt.savefig("overlap_matrix.png")
+    #plt.clf()
+    return Ham,Overlap
 
 def get_helem(lattice_vectors, hopping_model,indi, indj, di, dj):
     conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
