@@ -49,11 +49,11 @@ def get_random_atoms(n,a):
     atoms.set_array('mol-id',mol_id)
     return atoms
 
-def get_stack_atoms(n,a):
-    sep=3.35
+def get_stack_atoms(sep,a):
+    n=5
     atoms=fg.shift.make_graphene(stacking=["A","B"],cell_type='rect',
                             n_layer=2,n_1=n,n_2=n,lat_con=a,
-                            sep=3.35,sym=["B",'Ti'],mass=[12.01,12.02],h_vac=15)
+                            sep=sep,sym=["B",'Ti'],mass=[12.01,12.02],h_vac=5)
     return atoms
 
 def get_twist_geom(t,sep,a=2.46):
@@ -65,7 +65,7 @@ def get_twist_geom(t,sep,a=2.46):
 
 def get_graphite(s,a=2.46):
     atoms = Graphite(symbol = 'B',latticeconstant={'a':a,'c':2*s},
-               size=(1,1,1))
+               size=(2,2,2))
     pos = atoms.positions
     sym = atoms.get_chemical_symbols()
     mean_z = np.mean(pos[:,2])
@@ -119,9 +119,9 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
    
 if __name__=="__main__":
     test_tbforces=False
-    test_tbenergy=True
+    test_tbenergy=False
     test_lammps=False
-    test_bands=False
+    test_bands=True
     test_relaxation=False
     test_scaling=False
     theta = 21.78
@@ -130,7 +130,7 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
-                          "kmesh":(15,15,1),
+                          "kmesh":(1,1,1),
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -231,21 +231,20 @@ if __name__=="__main__":
 
         layer_sep = np.array([3.3266666666666667,3.3466666666666667,3.3866666666666667,3.4333333333333336,3.5,3.5733333333333333,3.6466666666666665,3.7666666666666666,3.9466666666666668,4.113333333333333,4.3533333333333335,4.54,4.76,5.013333333333334,5.16])
         #total interlayer energy/atom of graphite from popov paper at 40x40 kpoint grid
+
+        #layer_sep = np.linspace(3,5,10)
         popov_energies_sep = np.array([ 0.0953237410071943, 0.08884892086330941, 0.07877697841726625, 0.06582733812949645, 0.05323741007194249, 0.042086330935251826, 0.03237410071942448, 0.02230215827338132, 0.01151079136690649, 0.007194244604316571, 0.0025179856115108146, 0.0010791366906475058, 0.0007194244604316752, 0.00035971223021584453, 1.3877787807814457e-17])
-        julia_energies_sep = np.zeros_like(popov_energies_sep)
+        julia_energies_sep = np.zeros_like(layer_sep)
         kpoints = calc_obj.k_uniform_mesh(model_dict["kmesh"])
         tb_energy = 0
         for i,s in enumerate(layer_sep):
-            atoms = get_graphite(s)
+            #atoms = get_graphite(s)
             #atoms = get_atom_pairs(1,s)
-            #atoms = get_stack_atoms(3,2.46)
+            atoms = get_stack_atoms(s,2.46)
             #atoms = get_twist_geom(21.78,s,a=2.46)
             #test julia interface
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             #exit()
-            #evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
-            #nocc = np.shape(evals)[0]//2
-            #tb_energy = 2*np.sum(evals[:nocc,:])/np.shape(kpoints)[0]
             julia_energies_sep[i] = tb_energy/len(atoms)
             
             
@@ -257,22 +256,23 @@ if __name__=="__main__":
         plt.savefig("layer_sep_energies.png")
         plt.clf()
 
-        print("RMSE latte, julia tight binding energy = ",np.linalg.norm(
-            (julia_energies_sep-julia_energies_sep[-1])-(popov_energies_sep-popov_energies_sep[-1])))
-        print("difference in energies at d=3.44, = ",(julia_energies_sep[2]-julia_energies_sep[-1])
-              -(popov_energies_sep[2]-popov_energies_sep[-1]))
+        #print("RMSE latte, julia tight binding energy = ",np.linalg.norm(
+        #    (julia_energies_sep-julia_energies_sep[-1])-(popov_energies_sep-popov_energies_sep[-1])))
+        #print("difference in energies at d=3.44, = ",(julia_energies_sep[2]-julia_energies_sep[-1])
+        #      -(popov_energies_sep[2]-popov_energies_sep[-1]))
         
-        """a_ = np.linspace(2.35,2.6,20)
+        a_ = np.linspace(2.35,2.6,20)
         s= 3.35
         python_energies = np.zeros_like(a_)
         for i,a in enumerate(a_):
-            atoms = get_graphite(s,a=a)
+            #atoms = get_graphite(s,a=a)
+            atoms = get_stack_atoms(s,a)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             python_energies[i] = tb_energy/len(atoms)
 
         plt.plot(a_,python_energies-python_energies[-1])
         plt.savefig("intralayer_energies.png")
-        plt.clf()"""
+        plt.clf()
 
             
     if test_lammps:

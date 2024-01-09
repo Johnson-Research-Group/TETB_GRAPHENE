@@ -99,8 +99,12 @@ def popov_hopping(dR):
     b = 10.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
 
-    Cpp_sigma = lp.array([0.1727212, -0.0937225, -0.0445544, 0.1114266, -0.0978079, 0.0577363, -0.0262833, 0.0094388, -0.0024695, 0.0003863])
-    Cpp_pi = lp.array([-0.3969243, 0.3477657, -0.2357499, 0.1257478, -0.0535682, 0.0181983, -0.0046855, 0.0007303, 0.0000225, -0.0000393])
+    Cpp_sigma = lp.array([0.1727212, -0.0937225, -0.0445544, 0.1114266,
+                           -0.0978079, 0.0577363, -0.0262833, 0.0094388,
+                             -0.0024695, 0.0003863])
+    Cpp_pi = lp.array([-0.3969243, 0.3477657, -0.2357499, 0.1257478,
+                        -0.0535682, 0.0181983, -0.0046855, 0.0007303,
+                          0.0000225, -0.0000393])
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
 
@@ -110,6 +114,41 @@ def popov_hopping(dR):
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
     return valmat*eV_per_hart
+
+def popov_overlap(dR):
+
+    dRn = lp.linalg.norm(dR, axis=1)
+    #dRn = norm(dR)
+    dRn = dR / dRn[:,lp.newaxis]
+
+    l = dRn[:, 0]
+    m = dRn[:, 1]
+    n = dRn[:, 2]
+    #r = norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
+    r = lp.clip(r, 1, 10)
+  
+    #%boundaries for polynomial
+
+    aa = 1 #; %Angstrom
+    b = 10 #; %Angstrom
+    y = (2*r-(b+aa))/(b-aa)
+    #orignally sigma
+    Cpp_sigma=np.array([-0.0571487, -0.0291832, 0.1558650, -0.1665997,
+                        0.0921727, -0.0268106, 0.0002240, 0.0040319,
+                        -0.0022450, 0.0005596])
+    Cpp_pi=   np.array([0.3797305, -0.3199876, 0.1897988, -0.0754124,
+                        0.0156376, 0.0025976, -0.0039498, 0.0020581,
+                        -0.0007114, 0.0001427])
+
+    Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
+    Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
+
+    Vpp_sigma  -= Cpp_sigma[0]/2
+    Vpp_pi -= Cpp_pi[0]/2
+    Ezz = n**2*Vpp_sigma + (1-n**2)*Vpp_pi  #; %Changing only this as only
+    return Ezz #*eV_per_hart
+
 #@njit
 def popov_hopping_grad(dR):
     #dRn = lp.linalg.norm(dR, axis=1)
@@ -174,8 +213,12 @@ def porezag_hopping(dR):
     b = 7.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
 
-    Cpp_sigma = lp.array([0.2422701, -0.1315258, -0.0372696, 0.0942352, -0.0673216, 0.0316900, -0.0117293, 0.0033519, -0.0004838, -0.0000906])
-    Cpp_pi = lp.array([-0.3793837, 0.3204470, -0.1956799, 0.0883986, -0.0300733, 0.0074465, -0.0008563, -0.0004453, 0.0003842, -0.0001855])
+    Cpp_sigma = lp.array([0.2422701, -0.1315258, -0.0372696, 0.0942352,
+                           -0.0673216, 0.0316900, -0.0117293, 0.0033519, 
+                           -0.0004838, -0.0000906])
+    Cpp_pi = lp.array([-0.3793837, 0.3204470, -0.1956799, 0.0883986, 
+                       -0.0300733, 0.0074465, -0.0008563, -0.0004453, 
+                       0.0003842, -0.0001855])
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
 
@@ -184,6 +227,42 @@ def porezag_hopping(dR):
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
     return valmat*eV_per_hart
+
+def porezag_overlap(dR):
+    eV_per_hart=27.2114
+    dRn = lp.linalg.norm(dR, axis=1)
+    #dRn = norm(dR)
+    dRn = dR / dRn[:,lp.newaxis]
+    eV_per_hart=27.2114
+
+    l = dRn[:, 0]
+    m = dRn[:, 1]
+    n = dRn[:, 2]
+    #r = norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
+    r = lp.clip(r, 1, 7)
+    aa = 1 #; %Angstrom
+
+    b =7 #; %Angstrom
+
+    y = (2*r-(b+aa))/(b-aa)
+
+    
+    #overlap matrix coefficient (No units mentioned)
+    #originally sigma
+    Cpp_sigma=np.array([-0.1359608, 0.0226235, 0.1406440, -0.1573794,
+                            0.0753818, -0.0108677, -0.0075444, 0.0051533,
+                            -0.0013747, 0.0000751])
+    Cpp_pi=   np.array([0.3715732, -0.3070867, 0.1707304, -0.0581555,
+                            0.0061645, 0.0051460, -0.0032776, 0.0009119,
+                            -0.0001265, -0.000227])
+    Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
+    Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
+
+    Vpp_sigma  -= Cpp_sigma[0]/2
+    Vpp_pi -= Cpp_pi[0]/2
+    Ezz = n**2*Vpp_sigma + (1-n**2)*Vpp_pi
+    return Ezz #*eV_per_hart
 
 #@njit
 def porezag_hopping_grad(dR):
@@ -286,7 +365,7 @@ def porezag(lattice_vectors, atomic_basis, i, j, di, dj):
     #di = lp.array(di)
     #dj = lp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = -porezag_hopping(disp)
+    hoppings = porezag_hopping(disp)
     return hoppings
 #@njit
 def porezag_grad(lattice_vectors, atomic_basis, i, j, di, dj):
@@ -322,7 +401,8 @@ def mk(lattice_vectors, atomic_basis, i, j, di, dj):
     hoppings = moon([lp.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48)
     return hoppings
 #@njit
-def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj):
+def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj) : #lattice_vectors, atomic_basis, i, j, di, dj):
+    conversion = 1.0/.529177 #[bohr/angstrom]
     lattice_vectors = lp.array(lattice_vectors)
     atomic_basis = lp.array(atomic_basis)
     i = lp.array(i)
@@ -331,8 +411,11 @@ def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj):
     dj = lp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     dist = lp.linalg.norm(disp,axis=1)
-    nn_dist = 1.42
-    hoppings = -(dist-nn_dist)+2
+    nn_dist = 1.42*conversion
+    nn_layer_sep = 3.35*conversion
+    slope = (2.7-0.3)/(nn_dist - nn_layer_sep)
+    inter = 2.7/slope/nn_dist
+    hoppings = slope * dist + inter
     return hoppings
 @njit
 def letb_interlayer(lattice_vectors, atomic_basis, i, j, di, dj):
@@ -340,78 +423,6 @@ def letb_interlayer(lattice_vectors, atomic_basis, i, j, di, dj):
 @njit
 def letb_intralayer(lattice_vectors, atomic_basis, i, j, di, dj):
     return None
-
-def popov_overlap(dR):
-    eV_per_hart=27.2114
-
-    dRn = lp.linalg.norm(dR, axis=1)
-    #dRn = norm(dR)
-    dRn = dR / dRn[:,lp.newaxis]
-    eV_per_hart=27.2114
-
-    l = dRn[:, 0]
-    m = dRn[:, 1]
-    n = dRn[:, 2]
-    #r = norm(dR)
-    r = lp.linalg.norm(dR,axis=1)
-    r = lp.clip(r, 1, 7)
-  
-    #%boundaries for polynomial
-
-    aa = 1 #; %Angstrom
-    b = 10 #; %Angstrom
-    y = (2*r-(b+aa))/(b-aa)
-    #orignally sigma
-    Cpp_sigma=np.array([-0.0571487, -0.0291832, 0.1558650, -0.1665997,
-                        0.0921727, -0.0268106, 0.0002240, 0.0040319,
-                        -0.0022450, 0.0005596])
-    Cpp_pi=   np.array([0.3797305, -0.3199876, 0.1897988, -0.0754124,
-                        0.0156376, 0.0025976, -0.0039498, 0.0020581,
-                        -0.0007114, 0.0001427])
-
-    Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
-    Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
-
-    Vpp_sigma  -= Cpp_sigma[0]/2
-    Vpp_pi -= Cpp_pi[0]/2
-    Ezz = n**2*Vpp_sigma + (1-n**2)*Vpp_pi  #; %Changing only this as only
-    return Ezz #*eV_per_hart
-
-def porezag_overlap(dR):
-    eV_per_hart=27.2114
-    dRn = lp.linalg.norm(dR, axis=1)
-    #dRn = norm(dR)
-    dRn = dR / dRn[:,lp.newaxis]
-    eV_per_hart=27.2114
-
-    l = dRn[:, 0]
-    m = dRn[:, 1]
-    n = dRn[:, 2]
-    #r = norm(dR)
-    r = lp.linalg.norm(dR,axis=1)
-    r = lp.clip(r, 1, 7)
-    aa = 1 #; %Angstrom
-
-    b =7 #; %Angstrom
-
-    y = (2*r-(b+aa))/(b-aa)
-
-    
-    #overlap matrix coefficient (No units mentioned)
-    #originally sigma
-    Cpp_sigma=np.array([-0.1359608, 0.0226235, 0.1406440, -0.1573794,
-                            0.0753818, -0.0108677, -0.0075444, 0.0051533,
-                            -0.0013747, 0.0000751])
-    Cpp_pi=   np.array([0.3715732, -0.3070867, 0.1707304, -0.0581555,
-                            0.0061645, 0.0051460, -0.0032776, 0.0009119,
-                            -0.0001265, -0.000227])
-    Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
-    Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
-
-    Vpp_sigma  -= Cpp_sigma[0]/2
-    Vpp_pi -= Cpp_pi[0]/2
-    Ezz = n**2*Vpp_sigma + (1-n**2)*Vpp_pi
-    return Ezz #*eV_per_hart
 
 if __name__=="__main__":
     import matplotlib.pyplot as plt
@@ -459,6 +470,7 @@ if __name__=="__main__":
 
     #overlap
     #popov
+    model = "popov"
     Cpp_sigma=np.array([-0.0571487, -0.0291832, 0.1558650, -0.1665997,
                         0.0921727, -0.0268106, 0.0002240, 0.0040319,
                         -0.0022450, 0.0005596])
@@ -466,23 +478,28 @@ if __name__=="__main__":
                         0.0156376, 0.0025976, -0.0039498, 0.0020581,
                         -0.0007114, 0.0001427])
     #porezag
-    """Cpp_pi=np.array([-0.1359608, 0.0226235, 0.1406440, -0.1573794,
+    model = "porezag"
+    Cpp_sigma=np.array([-0.1359608, 0.0226235, 0.1406440, -0.1573794,
                             0.0753818, -0.0108677, -0.0075444, 0.0051533,
                             -0.0013747, 0.0000751])
-    Cpp_sigma=   np.array([0.3715732, -0.3070867, 0.1707304, -0.0581555,
+    Cpp_pi=   np.array([0.3715732, -0.3070867, 0.1707304, -0.0581555,
                             0.0061645, 0.0051460, -0.0032776, 0.0009119,
-                            -0.0001265, -0.000227])"""
+                            -0.0001265, -0.000227])
     aa = 1 #; %Angstrom
-    b = 10 #; %Angstrom
+    b = 7 #; %Angstrom
     y = (2*r-(b+aa))/(b-aa)
+    n = r
     Vpp_sigma = np.polynomial.chebyshev.chebval(y,Cpp_sigma)
     Vpp_pi = np.polynomial.chebyshev.chebval(y,Cpp_pi)
     Vpp_sigma -= Cpp_sigma[0] / 2
     Vpp_pi -= Cpp_pi[0] / 2
+    elem = n**2*Vpp_sigma + (1-n**2)*Vpp_pi
 
-    plt.plot(r,Vpp_sigma,label="popov sigma overlap")
-    plt.plot(r,Vpp_pi,label="popov pi overlap")
+    plt.plot(r,Vpp_sigma,label=" sigma overlap")
+    plt.plot(r,Vpp_pi,label=" pi overlap")
+    #plt.plot(r,elem,label="overlap matrix element")
+    plt.title(model+" overlap")
     plt.legend()
-    plt.savefig("overlap_ints_popov.png")
+    plt.savefig("overlap_ints_"+model+".png")
 
     plt.clf()

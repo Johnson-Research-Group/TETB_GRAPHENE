@@ -34,8 +34,6 @@ def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10
     cell = np.asarray(cell)
     kpoints = np.asarray(kpoints)
     mol_id = np.asarray(mol_id)
-
-    #params = get_param_dict(params_str)
     recip_cell = get_recip_cell(cell)
     
     if kpoints.shape == (3,):
@@ -49,25 +47,21 @@ def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10
     Forces = np.zeros((natoms, 3), dtype=np.complex64)
     for k in range(nkp):
         Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
-        #Ham = np.linalg.inv(Overlap) @ Ham #@ Overlap
         
-        #Ham = get_Energy_spectrum(atom_positions, mol_id, cell,kval = kpoints[k,:])
         if use_cupy:
             Ham = np.asarray(Ham)
             eigvalues, eigvectors = np.linalg.eigh(Ham)
             eigvalues = np.asnumpy(eigvalues)
             eigvectors = np.asnumpy(eigvectors)
         else:
-            eigvalues, eigvectors = np.linalg.eigh(Ham)
-            #eigvalues, eigvectors = spla.eig(Ham,b=Overlap)
+            #eigvalues, eigvectors = np.linalg.eigh(Ham)
+            
+            eigvalues, eigvectors = spla.eigh(Ham.real,b=Overlap.real)
             #sort_ind = np.argsort(eigvalues)
             #eigvalues = eigvalues[sort_ind].real
             #eigvectors = eigvectors[sort_ind,:]
         nocc = int(natoms / 2)
-        fd_dist = 2*lp.eye(natoms)
-        fd_dist[nocc:,nocc:] = 0
-        density_matrix =  eigvectors @ fd_dist  @ lp.conj(eigvectors).T
-        Energy += 2 * np.sum(eigvalues[:nocc]) /nocc
+        Energy += 2 * np.sum(eigvalues[:nocc]) #/nocc
 
         #Zrho = density_matrix@Ham
         #Energy = np.sum(Zrho )
@@ -122,7 +116,7 @@ def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str):
     for k in range(nkp):
         #Ham = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k], params_str)
         Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
-        #Ham = np.linalg.inv(Overlap) @ Ham #@ Overlap
+        Ham = np.linalg.inv(Overlap) @ Ham #@ Overlap
         eigvalues, eigvectors = np.linalg.eigh(Ham)
         #eigvalues, eigvectors = spla.eig(Ham,b=Overlap)
         #sort_ind = np.argsort(eigvalues)

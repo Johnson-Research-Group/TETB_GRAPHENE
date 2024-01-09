@@ -9,11 +9,10 @@ else:
     from scipy.spatial.distance import cdist
 
 import numpy as np
-
 #from TEGT_GPU.TB_parameters_cupy_V2 import *
 from TB_parameters_cupy_V2 import *
 import matplotlib.pyplot as plt
-
+import glob
 models_functions_interlayer = {'letb':letb_interlayer,
                                     'mk':mk,
                                     'popov':popov,
@@ -33,9 +32,9 @@ models_functions_intralayer = {'letb':letb_intralayer,
 models_cutoff_intralayer={'letb':10,
                         'mk':10,
                         'porezag':3.7,
-                        "nn":3}
+                        "nn":4.4}
 
-def gen_ham_ovrlp_vector(atom_positions, layer_types, cell, kpoint, model_type):
+def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
     Returns a pythtb model object for a given ASE atomic configuration 
     Input:
@@ -64,54 +63,83 @@ def gen_ham_ovrlp_vector(atom_positions, layer_types, cell, kpoint, model_type):
             djFull += [dy] * natom
     distances = cdist(atomic_basis, extended_coords)
     
-    #Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
-    Ham = lp.zeros((natom,natom),dtype=lp.complex64)
-    dist_table = lp.zeros((natom,natom))
-    
+    Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
+    Overlap = np.eye(natom,dtype=lp.complex64)
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
             if i_type==j_type:
                 hopping_model = models_functions_intralayer[model_type["intralayer"]]
+                overlap_model = porezag_overlap
                 cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
-                p=1
             else:
                 hopping_model = models_functions_interlayer[model_type["interlayer"]]
+                overlap_model = popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-                p=-1
-            indi, indj = lp.where((distances > 0.1)  & (distances < cutoff))
-            di = lp.array(diFull)[indj]
-            dj = lp.array(djFull)[indj]
-            i  = lp.array(indi)
-            j  = lp.array(indj % natom)
+            i, j = lp.where((distances > 0.1)  & (distances < cutoff))
+            di = lp.array(diFull)[j]
+            dj = lp.array(djFull)[j]
+            i  = lp.array(i)
+            j  = lp.array(j % natom)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
             valid_indices &= i!=j
-            #ind_R_ = lp.stack((di[valid_indices],dj[valid_indices],lp.zeros_like(di[valid_indices])),axis=1)@lattice_vectors.T
-            #rv = -atomic_basis[i[valid_indices],:]+atomic_basis[j[valid_indices],:]+ind_R_
+
             disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
                                            i[valid_indices], j[valid_indices])
             phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
 
             hoppings = hopping_model(lattice_vectors, atomic_basis,i[valid_indices], 
                                   j[valid_indices], di[valid_indices], dj[valid_indices])/2  # Divide by 2 since we are double counting every pair
+            overlap_elem = overlap_model(disp)/2
             Ham[i[valid_indices],j[valid_indices]] += hoppings * phases
             Ham[j[valid_indices],i[valid_indices]] += lp.conj(hoppings*phases)
-            dist_table[i[valid_indices],j[valid_indices]] = np.linalg.norm(disp,axis=1)
-            dist_table[j[valid_indices],i[valid_indices]] = np.linalg.norm(disp,axis=1)
+            Overlap[i[valid_indices],j[valid_indices]] +=   overlap_elem  * phases
+            Overlap[j[valid_indices],i[valid_indices]] +=  lp.conj(overlap_elem * phases) 
+    
+    """mean_z = np.mean(atom_positions[:,2])
+    top_ind = np.where(atom_positions[:,2]>mean_z)
+    bot_ind = np.where(atom_positions[:,2]<mean_z)
+    layer_sep = np.mean(atom_positions[top_ind,2]-atom_positions[bot_ind,2])
+    ham_files = glob.glob("latte_hamiltonians/ham_*",recursive=True)
+    smin=100
+    s=""
+    for hf in ham_files:
+        sstr = hf.split("_")[-1]
+        if np.abs(layer_sep-float(sstr))<smin:
+            s = sstr
+            smin = np.abs(layer_sep-float(sstr))
 
-    #plt.imshow(Ham.real)
+    print(s)
+    latte_data = np.loadtxt("latte_hamiltonians/ham_"+s)
+    natoms = 200
+    latte_Ham = -5.29*np.eye(natoms)
+    indexi=np.int64(latte_data[:,1])-1
+    indexj = np.int64(latte_data[:,2])-1
+    latte_Ham[indexi,indexj] += latte_data[:,0]
+    diff = Ham.real-latte_Ham
+
+    #plt.imshow(Ham.real-latte_Ham)
     #plt.colorbar()
-    #plt.savefig("ham_vector.png")
+    #plt.savefig("latte_python_ham_diff"+s+".png")
     #plt.clf()
 
-    #plt.imshow(dist_table)
-    #plt.colorbar()
-    #plt.savefig("dist_table.png")
-    #plt.clf()
+    latte_data = np.loadtxt("latte_overlap/overlap_"+s)
+    natoms = 200
+    latte_overlap = np.eye(natoms)
+    indexi=np.int64(latte_data[:,1])-1
+    indexj = np.int64(latte_data[:,2])-1
+    #latte_overlap[indexi,indexj] = latte_data[:,0]
+    for o in range(len(latte_data[:,0])):
+        latte_overlap[indexi[o],indexj[o]] = latte_data[o,0]
 
-    return Ham, np.eye(np.shape(Ham)[0])
+    plt.imshow(Overlap.real-latte_overlap)
+    plt.colorbar()
+    plt.savefig("latte_python_overlap_diff"+s+".png")
+    plt.clf()"""
 
-def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
+    return Ham, Overlap
+
+def gen_ham_ovrlp_ref(atom_positions, layer_types, cell, kpoint, model_type):
     """
     Returns a pythtb model object for a given ASE atomic configuration 
     Input:
@@ -131,7 +159,8 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
 
     natom = len(atomic_basis)
     
-    Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
+    #Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
+    Ham = lp.zeros((natom,natom),dtype=lp.complex64)
     Overlap = lp.eye(natom,dtype = lp.complex64)
     for indi in range(natom):
         for indj in range(natom):
@@ -139,11 +168,11 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
                 continue
 
             if layer_types[indi]==layer_types[indj]:
-                hopping_model = porezag_hopping
+                hopping_model = models_functions_intralayer[model_type["intralayer"]]
                 overlap_model = porezag_overlap
                 cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
             else:
-                hopping_model = popov_hopping
+                hopping_model = models_functions_interlayer[model_type["interlayer"]]
                 overlap_model = popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
 
@@ -162,25 +191,11 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
             phases = lp.exp((1.0j)*lp.dot(kpoint,disp))
             hoppings = np.squeeze(hopping_model([disp])) * phases  
             overlap_elem = np.squeeze(overlap_model([disp])) * phases
-            #dxy = np.linalg.norm(disp[:2])
-            #dz = disp[-1]
-            #hoppings = np.squeeze(moon([lp.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48))* phases
-            #if layer_types[indi]==layer_types[indj]:
-            #    plt.scatter(np.linalg.norm(disp),hoppings,c="red")
-            #else:
-            #    plt.scatter(np.linalg.norm(disp),hoppings,c="black")
             Overlap[indi,indj] =   overlap_elem 
             Overlap[indj,indi] =  lp.conj(overlap_elem) 
             Ham[indi,indj] = hoppings 
             Ham[indj,indi] = lp.conj(hoppings)
-    #Ham = Ham + Ham.conj().T 
-    #Overlap = Overlap + Overlap.conj().T 
-    #eV_per_hart=27.2114
-    #plt.imshow(Overlap.real/eV_per_hart)
-    #plt.colorbar()
-    #plt.clim(0,-10)
-    #plt.savefig("overlap_matrix.png")
-    #plt.clf()
+    print(np.round(Ham.real,decimals=2))
     return Ham,Overlap
 
 def get_helem(lattice_vectors, hopping_model,indi, indj, di, dj):
@@ -232,9 +247,9 @@ def get_hellman_feynman_autograd(atomic_basis, layer_types, lattice_vectors, eig
             j  = lp.array(indj % natoms)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
-            ind_R_ = lp.stack((di[valid_indices],dj[valid_indices],lp.zeros_like(di[valid_indices])),axis=1)@lattice_vectors.T
-            rv = -atomic_basis[i[valid_indices],:]+atomic_basis[j[valid_indices],:]+ind_R_
-            phases = lp.exp((1.0j)*lp.dot(kpoint,rv.T))
+            disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
+                                           i[valid_indices], j[valid_indices])
+            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
     
             helem_fxn = get_helem(lattice_vectors, hopping_model,i[valid_indices], 
                                   j[valid_indices], di[valid_indices], dj[valid_indices])
@@ -293,9 +308,9 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvec, mode
             j  = lp.array(indj % natoms)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
-            ind_R_ = lp.stack((di[valid_indices],dj[valid_indices],lp.zeros_like(di[valid_indices])),axis=1)@lattice_vectors.T
-            rv = -atomic_basis[i[valid_indices],:]+atomic_basis[j[valid_indices],:]+ind_R_
-            phases = lp.exp((1.0j)*lp.dot(kpoint,rv.T))
+            disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
+                                           i[valid_indices], j[valid_indices])
+            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
     
             #helem_fxn = get_helem(lattice_vectors, hopping_model,i[valid_indices], 
             #                      j[valid_indices], di[valid_indices], dj[valid_indices])

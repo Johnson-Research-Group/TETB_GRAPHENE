@@ -184,8 +184,8 @@ class TEGT_Calc(Calculator):
         evecs = np.zeros((self.natoms,self.natoms,self.nkp),dtype=complex)
         i=0
         for eva,eve in results:
-            evals[:,i] = eva
-            evecs[:,:,i] = eve
+            evals[:,i] = np.squeeze(eva)
+            evecs[:,:,i] = np.squeeze(eve)
             i+=1
         return evals, evecs
 
