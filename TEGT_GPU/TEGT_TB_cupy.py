@@ -56,19 +56,37 @@ def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10
         else:
             #eigvalues, eigvectors = np.linalg.eigh(Ham)
             
-            eigvalues, eigvectors = spla.eigh(Ham.real,b=Overlap.real)
+            eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
             #sort_ind = np.argsort(eigvalues)
             #eigvalues = eigvalues[sort_ind].real
             #eigvectors = eigvectors[sort_ind,:]
         nocc = int(natoms / 2)
-        Energy += 2 * np.sum(eigvalues[:nocc]) #/nocc
+        Energy += 2 * np.sum(eigvalues[:nocc])
 
-        #Zrho = density_matrix@Ham
-        #Energy = np.sum(Zrho )
-
-        Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvectors, params_str,kpoints[k,:] )
+        Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvalues,eigvectors, params_str,kpoints[k,:] )
 
     return Energy,Forces
+
+def get_interlayer_tb_forces(atom_positions,mol_id,cell,kpoints,params_str):
+    atom_positions = np.asarray(atom_positions)
+    cell = np.asarray(cell)
+    kpoints = np.asarray(kpoints)
+    mol_id = np.asarray(mol_id)
+    recip_cell = get_recip_cell(cell)
+    
+    if kpoints.shape == (3,):
+        kpoints = kpoints.reshape((1, 3))
+    
+    kpoints = kpoints @ recip_cell
+    nkp = kpoints.shape[0]
+    natoms = atom_positions.shape[0]
+
+    interlayer_Forces = 0
+    for k in range(nkp):
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
+        eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
+        interlayer_Forces += get_hellman_feynman_interlayer(atom_positions,mol_id, cell, eigvalues,eigvectors, params_str,kpoints[k,:] )
+    return interlayer_Forces 
 
 
 def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str, rcut=10):
