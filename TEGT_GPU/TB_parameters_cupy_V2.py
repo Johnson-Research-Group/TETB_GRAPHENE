@@ -17,6 +17,12 @@ import matplotlib.pyplot as plt
 #import TEGT_GPU.descriptors as descriptors
 import descriptors
 
+
+#########################################################################################
+
+# UTILS
+
+########################################################################################
 #@njit
 def exponential(x, a, b):
     return a * lp.exp(-b * (x - 6.33))
@@ -83,6 +89,11 @@ def norm(a):
         norms[i] = lp.sqrt(sum)
     return norms
 
+###############################################################################
+
+# POPOV
+
+###############################################################################
 #@njit
 def popov_hopping(dR):
     dRn = lp.linalg.norm(dR, axis=1)
@@ -167,9 +178,12 @@ def popov_hopping_grad(dR):
     y = (2.0 * r - (b + aa)) / (b - aa)
     dr = 1e-3
 
-    Cpp_sigma = lp.array([0.1727212, -0.0937225, -0.0445544, 0.1114266, -0.0978079, 0.0577363, -0.0262833, 0.0094388, -0.0024695, 0.0003863])
-    Cpp_pi = lp.array([-0.3969243, 0.3477657, -0.2357499, 0.1257478, -0.0535682, 0.0181983, -0.0046855, 0.0007303, 0.0000225, -0.0000393])
-
+    Cpp_sigma = lp.array([0.1727212, -0.0937225, -0.0445544, 0.1114266,
+                           -0.0978079, 0.0577363, -0.0262833, 0.0094388,
+                             -0.0024695, 0.0003863])
+    Cpp_pi = lp.array([-0.3969243, 0.3477657, -0.2357499, 0.1257478,
+                        -0.0535682, 0.0181983, -0.0046855, 0.0007303,
+                          0.0000225, -0.0000393])
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
 
@@ -181,21 +195,115 @@ def popov_hopping_grad(dR):
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
 
-    x_ = dR[:,0]
-    y_ = dR[:,1]
-    z_ = dR[:,2]
+    xsq = np.power(dR[:,0],2)
+    ysq = np.power(dR[:,1],2)
+    zsq = np.power(dR[:,2],2)
+    
     gradt = np.zeros_like(dR)
-    gradt[:,0] = (-2 * x_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
-            + 2 * x_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,0]
+    rsq = np.power(r,2)
+    nsq = np.power(n,2)
+    gradt[:,0] = (-2 * Vpp_sigma * nsq/r  \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq /r \
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * l
     
-    gradt[:,1] = (-2 * y_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
-            + 2 * y_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,1]
-    
-    gradt[:,2] = (-2 * z_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
-            + 2 * z_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,2]
-    
-    return gradt * eV_per_hart *0.42034102
+    gradt[:,1] = (-2 * Vpp_sigma * nsq /r \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq / r\
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * m
+                
+    gradt[:,2] = (2 * Vpp_sigma * n * (xsq + ysq)/rsq \
+                + d_Vpp_sigma * nsq \
+                - 2 * Vpp_pi * n * (xsq + ysq)/rsq \
+                + d_Vpp_pi * (xsq**2 + ysq**2)/rsq**2) * n
+    #gradients verified against finite difference
+    return gradt * eV_per_hart * 2/(b-aa)
 
+def popov_overlap_grad(dR):
+    #dRn = lp.linalg.norm(dR, axis=1)
+    dRn = norm(dR)
+    dRn = dR / dRn[:,lp.newaxis]
+    eV_per_hart=27.2114
+
+    l = dRn[:, 0]
+    m = dRn[:, 1]
+    n = dRn[:, 2]
+    #r =norm(dR)
+    r = lp.linalg.norm(dR,axis=1)
+    r = lp.clip(r, 1, 10)
+    aa = 1.0  # [Bohr radii]
+    b = 10.0  # [Bohr radii]
+    y = (2.0 * r - (b + aa)) / (b - aa)
+    dr = 1e-3
+
+    Cpp_sigma=np.array([-0.0571487, -0.0291832, 0.1558650, -0.1665997,
+                        0.0921727, -0.0268106, 0.0002240, 0.0040319,
+                        -0.0022450, 0.0005596])
+    Cpp_pi=   np.array([0.3797305, -0.3199876, 0.1897988, -0.0754124,
+                        0.0156376, 0.0025976, -0.0039498, 0.0020581,
+                        -0.0007114, 0.0001427])
+    Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
+    Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
+
+    d_Vpp_sigma = lp.array([(chebyshev_t(Cpp_sigma, yi+dr)-chebyshev_t(Cpp_sigma, yi-dr))/2/dr for yi in y])
+    d_Vpp_pi = lp.array([(chebyshev_t(Cpp_pi, yi+dr)-chebyshev_t(Cpp_pi, yi-dr))/2/dr for yi in y])
+
+    Vpp_sigma -= Cpp_sigma[0] / 2
+    Vpp_pi -= Cpp_pi[0] / 2
+    Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
+
+    xsq = np.power(dR[:,0],2)
+    ysq = np.power(dR[:,1],2)
+    zsq = np.power(dR[:,2],2)
+    
+    grads = np.zeros_like(dR)
+    rsq = np.power(r,2)
+    nsq = np.power(n,2)
+    grads[:,0] = (-2 * Vpp_sigma * nsq/r  \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq /r \
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * l
+    
+    grads[:,1] = (-2 * Vpp_sigma * nsq /r \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq / r\
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * m
+                
+    grads[:,2] = (2 * Vpp_sigma * n * (xsq + ysq)/rsq \
+                + d_Vpp_sigma * nsq \
+                - 2 * Vpp_pi * n * (xsq + ysq)/rsq \
+                + d_Vpp_pi * (xsq**2 + ysq**2)/rsq**2) * n
+    
+    return grads * 2/(b-aa)
+
+#@njit
+def popov(lattice_vectors, atomic_basis, i, j, di, dj):
+    """
+    Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
+    Input: 
+        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for intralayer in BOHR
+        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
+        i, j            - int   (n) list of atomic bases you are hopping between
+        di, dj          - int   (n) list of displacement indices for the hopping
+    Output:
+        hoppings        - float (n) list of hoppings for the given i, j, di, dj
+    """
+    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
+    hoppings = popov_hopping(disp)
+                
+    return hoppings
+#@njit
+def popov_grad(lattice_vectors, atomic_basis, i, j, di, dj):
+    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
+    hopping_grad = popov_hopping_grad(disp)
+                
+    return hopping_grad
+
+####################################################################################################
+
+# POREZAG
+
+####################################################################################################
 #@njit
 def porezag_hopping(dR):
     dRn = lp.linalg.norm(dR, axis=1)
@@ -264,17 +372,14 @@ def porezag_overlap(dR):
     Ezz = n**2*Vpp_sigma + (1-n**2)*Vpp_pi
     return Ezz #*eV_per_hart
 
-#@njit
 def porezag_hopping_grad(dR):
     dRn = lp.linalg.norm(dR, axis=1)
-    #dRn = norm(dR)
     dRn = dR / dRn[:,lp.newaxis]
     eV_per_hart=27.2114
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    #r = norm(dR)
     r = lp.linalg.norm(dR,axis=1)
     r = lp.clip(r, 1, 7)
 
@@ -295,57 +400,85 @@ def porezag_hopping_grad(dR):
     Vpp_sigma -= Cpp_sigma[0] / 2
     Vpp_pi -= Cpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
-    valmat = Ezz
 
-    x_ = dR[:,0]
-    y_ = dR[:,1]
-    z_ = dR[:,2]
+    xsq = np.power(dR[:,0],2)
+    ysq = np.power(dR[:,1],2)
+    zsq = np.power(dR[:,2],2)
     
     gradt = np.zeros_like(dR)
-    gradt[:,0] = (-2 * x_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
-            + 2 * x_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,0]
+    rsq = np.power(r,2)
+    nsq = np.power(n,2)
+    gradt[:,0] = (-2 * Vpp_sigma * nsq/r  \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq /r \
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * l
     
-    gradt[:,1] = (-2 * y_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
-            + 2 * y_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,1]
-    
-    gradt[:,2] = (-2 * z_ * lp.power(n,2) * Vpp_sigma + lp.power(n,2) * d_Vpp_sigma \
-            + 2 * z_ * lp.power(n,2) * Vpp_pi + (1 - lp.power(n,2)) * d_Vpp_pi)*dRn[:,2]
-    return gradt * eV_per_hart * 0.62962696
+    gradt[:,1] = (-2 * Vpp_sigma * nsq /r \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq / r\
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * m
+                
+    gradt[:,2] = (2 * Vpp_sigma * n * (xsq + ysq)/rsq \
+                + d_Vpp_sigma * nsq \
+                - 2 * Vpp_pi * n * (xsq + ysq)/rsq \
+                + d_Vpp_pi * (xsq**2 + ysq**2)/rsq**2) * n
+    #gradients verified against finite difference
+    return gradt * eV_per_hart * 2/(b-aa)
 
-#@njit
-def popov(lattice_vectors, atomic_basis, i, j, di, dj):
-    """
-    Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
-    Input: 
-        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for intralayer in BOHR
-        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
-        i, j            - int   (n) list of atomic bases you are hopping between
-        di, dj          - int   (n) list of displacement indices for the hopping
-    Output:
-        hoppings        - float (n) list of hoppings for the given i, j, di, dj
-    """
-    #lattice_vectors = lp.array(lattice_vectors)
-    #atomic_basis = lp.array(atomic_basis)
-    #i = lp.array(i)
-    #j = lp.array(j)
-    #di = lp.array(di)
-    #dj = lp.array(dj)
-    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = popov_hopping(disp)
+def porezag_overlap_grad(dR):
+    dRn = lp.linalg.norm(dR, axis=1)
+    dRn = dR / dRn[:,lp.newaxis]
+    eV_per_hart=27.2114
+
+    l = dRn[:, 0]
+    m = dRn[:, 1]
+    n = dRn[:, 2]
+    r = lp.linalg.norm(dR,axis=1)
+    r = lp.clip(r, 1, 7)
+
+    aa = 1.0  # [Bohr radii]
+    b = 7.0  # [Bohr radii]
+    y = (2.0 * r - (b + aa)) / (b - aa)
+    dr = 1e-3
+
+    Cpp_sigma=np.array([-0.1359608, 0.0226235, 0.1406440, -0.1573794,
+                            0.0753818, -0.0108677, -0.0075444, 0.0051533,
+                            -0.0013747, 0.0000751])
+    Cpp_pi=   np.array([0.3715732, -0.3070867, 0.1707304, -0.0581555,
+                            0.0061645, 0.0051460, -0.0032776, 0.0009119,
+                            -0.0001265, -0.000227])
+    Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
+    Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
+
+    d_Vpp_sigma = lp.array([(chebyshev_t(Cpp_sigma, yi+dr)-chebyshev_t(Cpp_sigma, yi-dr))/2/dr for yi in y])
+    d_Vpp_pi = lp.array([(chebyshev_t(Cpp_pi, yi+dr)-chebyshev_t(Cpp_pi, yi-dr))/2/dr for yi in y])
+
+    Vpp_sigma -= Cpp_sigma[0] / 2
+    Vpp_pi -= Cpp_pi[0] / 2
+    Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
+
+    xsq = np.power(dR[:,0],2)
+    ysq = np.power(dR[:,1],2)
+    zsq = np.power(dR[:,2],2)
+    
+    grads = np.zeros_like(dR)
+    rsq = np.power(r,2)
+    nsq = np.power(n,2)
+    grads[:,0] = (-2 * Vpp_sigma * nsq/r  \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq /r \
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * l
+    
+    grads[:,1] = (-2 * Vpp_sigma * nsq /r \
+                + d_Vpp_sigma * nsq \
+                + 2 * Vpp_pi * nsq / r\
+                + d_Vpp_pi * ((xsq**2+ysq**2 + xsq*ysq)/rsq**2 + nsq * (xsq + ysq)/rsq)) * m
                 
-    return hoppings
-#@njit
-def popov_grad(lattice_vectors, atomic_basis, i, j, di, dj):
-    #lattice_vectors = lp.array(lattice_vectors)
-    #tomic_basis = lp.array(atomic_basis)
-    #i = lp.array(i)
-    #j = lp.array(j)
-    #di = lp.array(di)
-    #dj = lp.array(dj)
-    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
-    hopping_grad = popov_hopping_grad(disp)
-                
-    return hopping_grad
+    grads[:,2] = (2 * Vpp_sigma * n * (xsq + ysq)/rsq \
+                + d_Vpp_sigma * nsq \
+                - 2 * Vpp_pi * n * (xsq + ysq)/rsq \
+                + d_Vpp_pi * (xsq**2 + ysq**2)/rsq**2) * n
+    return grads * 2/(b-aa)
 #@njit
 def porezag(lattice_vectors, atomic_basis, i, j, di, dj):
     """
@@ -358,27 +491,21 @@ def porezag(lattice_vectors, atomic_basis, i, j, di, dj):
     Output:
         hoppings        - float (n) list of hoppings for the given i, j, di, dj
     """
-    #lattice_vectors = lp.array(lattice_vectors)
-    #atomic_basis = lp.array(atomic_basis)
-    #i = lp.array(i)
-    #j = lp.array(j)
-    #di = lp.array(di)
-    #dj = lp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     hoppings = porezag_hopping(disp)
     return hoppings
 #@njit
 def porezag_grad(lattice_vectors, atomic_basis, i, j, di, dj):
-    #lattice_vectors = lp.array(lattice_vectors)
-    #atomic_basis = lp.array(atomic_basis)
-    #i = lp.array(i)
-    #j = lp.array(j)
-    #di = lp.array(di)
-    #dj = lp.array(dj)
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     hopping_grad = porezag_hopping_grad(disp)
                 
     return hopping_grad
+
+############################################################################################
+
+# Extras
+
+#############################################################################################
 #@njit
 def mk(lattice_vectors, atomic_basis, i, j, di, dj):
     """
@@ -502,4 +629,12 @@ if __name__=="__main__":
     plt.legend()
     plt.savefig("overlap_ints_"+model+".png")
 
+    plt.clf()
+
+    X,Y = np.meshgrid(r,r)
+    X = X.flatten()
+    Y = Y.flatten()
+    n2 = np.power(X,2) / (np.power(X,2) + np.power(Y,2))
+    plt.scatter(X,Y,color = n2 + (1-n2))
+    plt.savefig("directional_cosines.png")
     plt.clf()

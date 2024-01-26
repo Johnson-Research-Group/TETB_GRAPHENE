@@ -197,6 +197,12 @@ class TEGT_Calc(Calculator):
             total_energy += e
         return total_energy, total_force
 
+    def run_interlayer_force(self,atoms):
+        sym = atoms.get_chemical_symbols()
+        mol_id = atoms.get_array("mol-id")
+        interlayer_forces = get_interlayer_tb_forces(atoms.positions,mol_id,np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"])
+        return interlayer_forces/self.nkp
+    
     def run_tight_binding(self,atoms,force_type="force"):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
         sym = atoms.get_chemical_symbols()
