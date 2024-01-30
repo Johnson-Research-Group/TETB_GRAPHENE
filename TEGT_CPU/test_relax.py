@@ -5,7 +5,6 @@ Created on Mon Sep 11 16:46:47 2023
 @author: danpa
 """
 
-import TEGT_calc
 from ase import Atoms
 from ase.optimize import FIRE
 import flatgraphene as fg
@@ -16,6 +15,7 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
+import TEGT_CPU.TEGT_calc
 
 def get_atom_pairs(n,a):
     L=n*a+10
@@ -121,8 +121,8 @@ if __name__=="__main__":
     test_tbforces=False
     test_tbenergy=False
     test_lammps=False
-    test_bands=True
-    test_relaxation=False
+    test_bands=False
+    test_relaxation=True
     test_scaling=False
     theta = 21.78
     #theta = 5.09
@@ -130,12 +130,13 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
-                          "kmesh":(1,1,1),
+                          "kmesh":(15,15,1),
+                          "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
     
-    calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+    calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
     
     if test_tbforces:
         #test forces pairwise
@@ -300,11 +301,21 @@ if __name__=="__main__":
     if test_relaxation:
         from ase.optimize import BFGS
         #test relaxation
-        theta = 2.88
+        #theta = 2.88
+        theta = 5.09
         atoms = get_twist_geom(theta,3.35)
+        model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
+                          "basis":"pz",
+                          "kmesh":(15,15,1),
+                          "parallel":"dask",
+                          "intralayer potential":"Pz rebo",
+                          "interlayer potential":"Pz KC inspired",
+                          'output':"theta_21_78"})
+
+        calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
         #atoms = get_graphite(3.35)
         atoms.calc = calc_obj
-        calc_folder = "theta_2_88"
+        calc_folder = "theta_"+str(theta).replace(".","_")
         #calc_folder = "theta_5_09"
         if not os.path.exists(calc_folder):
             os.mkdir(calc_folder)

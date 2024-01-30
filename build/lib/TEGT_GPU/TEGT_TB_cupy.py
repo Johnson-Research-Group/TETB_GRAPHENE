@@ -1,97 +1,151 @@
-import cupy as cp
+use_cupy=False
+if use_cupy:
+    #import autograd.cupy as lp  # Thinly-wrapped numpy
+    from autograd import grad
+    #from cupyx.scipy.spatial.distance import cdist
+else:
+    import autograd.numpy as lp  # Thinly-wrapped numpy
+    from autograd import grad
+    from scipy.spatial.distance import cdist
+
 import numpy as np 
+import scipy.linalg as spla
 from TEGT_GPU.TB_Utils_cupy_V2 import *
+#from TB_Utils_cupy_V2 import *
 from TEGT_GPU.TB_parameters_cupy_V2 import *
+#from TB_parameters_cupy_V2 import *
 
 def get_recip_cell(cell):
     a1 = cell[:, 0]
     a2 = cell[:, 1]
     a3 = cell[:, 2]
 
-    volume = cp.dot(a1, cp.cross(a2, a3))
+    volume = np.dot(a1, np.cross(a2, a3))
 
-    b1 = 2 * cp.pi * cp.cross(a2, a3) / volume
-    b2 = 2 * cp.pi * cp.cross(a3, a1) / volume
-    b3 = 2 * cp.pi * cp.cross(a1, a2) / volume
+    b1 = 2 * np.pi * np.cross(a2, a3) / volume
+    b2 = 2 * np.pi * np.cross(a3, a1) / volume
+    b3 = 2 * np.pi * np.cross(a1, a2) / volume
 
-    return cp.array([b1, b2, b3])
+    return np.array([b1, b2, b3])
+
 
 def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10):
-    atom_positions = cp.asarray(atom_positions)
-    cell = cp.asarray(cell)
-    kpoints = cp.asarray(kpoints)
-    mol_id = cp.asarray(mol_id)
-
-    #params = get_param_dict(params_str)
+    atom_positions = np.asarray(atom_positions)
+    cell = np.asarray(cell)
+    kpoints = np.asarray(kpoints)
+    mol_id = np.asarray(mol_id)
     recip_cell = get_recip_cell(cell)
     
     if kpoints.shape == (3,):
         kpoints = kpoints.reshape((1, 3))
     
-    kpoints = kpoints * recip_cell
+    kpoints = kpoints @ recip_cell
     nkp = kpoints.shape[0]
     natoms = atom_positions.shape[0]
 
     Energy = 0
-    Forces = cp.zeros((natoms, 3), dtype=cp.complex64)
-
+    Forces = np.zeros((natoms, 3), dtype=np.complex64)
     for k in range(nkp):
-        Ham,i,j, di, dj, phase = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
-        eigvalues, eigvectors = cp.linalg.eigh(Ham)
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
+        
+        if use_cupy:
+            Ham = np.asarray(Ham)
+            eigvalues, eigvectors = np.linalg.eigh(Ham)
+            eigvalues = np.asnumpy(eigvalues)
+            eigvectors = np.asnumpy(eigvectors)
+        else:
+            #eigvalues, eigvectors = np.linalg.eigh(Ham)
+            
+            eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
+            #sort_ind = np.argsort(eigvalues)
+            #eigvalues = eigvalues[sort_ind].real
+            #eigvectors = eigvectors[sort_ind,:]
         nocc = int(natoms / 2)
-        Energy += 2 * cp.sum(eigvalues[:nocc])
-        Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvectors, params_str ,i,j, di, dj, phase)
+        Energy += 2 * np.sum(eigvalues[:nocc])
 
-    return cp.asnumpy(Energy), cp.asnumpy(Forces)
+        Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvalues,eigvectors, params_str,kpoints[k,:] )
+
+    return Energy,Forces
+
+def get_interlayer_tb_forces(atom_positions,mol_id,cell,kpoints,params_str):
+    atom_positions = np.asarray(atom_positions)
+    cell = np.asarray(cell)
+    kpoints = np.asarray(kpoints)
+    mol_id = np.asarray(mol_id)
+    recip_cell = get_recip_cell(cell)
+    
+    if kpoints.shape == (3,):
+        kpoints = kpoints.reshape((1, 3))
+    
+    kpoints = kpoints @ recip_cell
+    nkp = kpoints.shape[0]
+    natoms = atom_positions.shape[0]
+
+    interlayer_Forces = 0
+    for k in range(nkp):
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
+        eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
+        interlayer_Forces += get_hellman_feynman_interlayer(atom_positions,mol_id, cell, eigvalues,eigvectors, params_str,kpoints[k,:] )
+    return interlayer_Forces 
+
 
 def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str, rcut=10):
-    atom_positions = cp.asarray(atom_positions)
-    cell = cp.asarray(cell)
-    mol_id = cp.asarray(mol_id)
-    kpoints = cp.asarray(kpoints)
-    eV_per_hartree = 27.211407953
-    #params = get_param_dict(params_str)
+    atom_positions = np.asarray(atom_positions)
+    cell = np.asarray(cell)
+    mol_id = np.asarray(mol_id)
+    kpoints = np.asarray(kpoints)
 
     recip_cell = get_recip_cell(cell)
     if kpoints.ndim == 1:
-        kpoints = cp.reshape(kpoints, (1, 3))
-    kpoints = kpoints * recip_cell
+        kpoints = np.reshape(kpoints, (1, 3))
+    kpoints = kpoints @ recip_cell
     nkp = kpoints.shape[0]
     natoms = atom_positions.shape[0]
     Energy = 0
-    Forces = cp.zeros((natoms, 3), dtype=cp.complex64)
+    Forces = np.zeros((natoms, 3), dtype=np.complex64)
+    
     
     for k in range(nkp):
-        Ham,_,_, _, _, _ = gen_ham_ovrlp(atom_positions,  mol_id, cell, kpoints[k], params_str)
-        eigvalues, eigvectors = cp.linalg.eigh(Ham)
+        Ham = gen_ham_ovrlp(atom_positions,  mol_id, cell, kpoints[k], params_str)
+        eigvalues, eigvectors = np.linalg.eigh(Ham)
         nocc = int(natoms / 2)
-        Energy += 2 * cp.sum(eigvalues[:nocc])*eV_per_hartree
-        Forces += get_hellman_feynman_fd(atom_positions, mol_id, cell, eigvectors, kpoints[k], params_str)
-    
-    return cp.asnumpy(Energy), cp.asnumpy(Forces)
+        Energy += 2 * np.sum(np.sort(eigvalues)[:nocc])
+        Forces += get_hellman_feynman_fd(atom_positions,mol_id, cell, eigvectors, params_str,kpoints[k]) 
+    if use_cupy:
+        return np.asnumpy(Energy), np.asnumpy(Forces)
+    else:
+        return Energy,Forces
 
-def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str, rcut=10):
-    atom_positions = cp.asarray(atom_positions)
-    cell = cp.asarray(cell)
-    kpoints = cp.asarray(kpoints)
-    mol_id = cp.asarray(mol_id)
-    eV_per_hartree = 27.211407953
-    #params = get_param_dict(params_str)
+def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str):
+    atom_positions = np.asarray(atom_positions)
+    cell = np.asarray(cell)
+    kpoints = np.asarray(kpoints)
+    mol_id = np.asarray(mol_id)
+
     recip_cell = get_recip_cell(cell)
     if kpoints.ndim == 1:
-        kpoints = cp.reshape(kpoints, (1,3))
+        kpoints = np.reshape(kpoints, (1,3))
     kpoints = kpoints @ recip_cell.T
     natoms = atom_positions.shape[0]
     nkp = kpoints.shape[0]
-    evals = cp.zeros((natoms, nkp))
-    evecs = cp.zeros((natoms, natoms, nkp), dtype=cp.complex64)
+    evals = np.zeros((natoms, nkp))
+    evecs = np.zeros((natoms, natoms, nkp), dtype=np.complex64)
     
     for k in range(nkp):
-        Ham,_,_, _, _, _ = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k], params_str)
-        eigvalues, eigvectors = cp.linalg.eigh(Ham)
-        evals[:, k] = eigvalues*eV_per_hartree
+        #Ham = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k], params_str)
+        Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
+        Ham = np.linalg.inv(Overlap) @ Ham #@ Overlap
+        eigvalues, eigvectors = np.linalg.eigh(Ham)
+        #eigvalues, eigvectors = spla.eig(Ham,b=Overlap)
+        #sort_ind = np.argsort(eigvalues)
+        #eigvalues = eigvalues[sort_ind].real
+        #eigvectors = eigvectors[sort_ind,:]
+        evals[:, k] = eigvalues
         evecs[:, :, k] = eigvectors
-    return cp.asnumpy(evals), cp.asnumpy(evecs)
+    if use_cupy:
+        return np.asnumpy(evals), np.asnumpy(evecs)
+    else:
+        return evals,evecs
 
 def get_param_dict(params_str):
     if params_str == "popov":

@@ -98,7 +98,7 @@ def partition_tb(lattice_vectors, atomic_basis, di, dj, ai, aj):
     t00 = (distances < 0.95 * min_distance) | (distances > 1.05 * 2 * min_distance)
 
     return t01_ix, t02_ix, t03_ix, t00
-@njit
+#@njit
 def triangle_height(a, base):
     """
     Give area of a triangle given two displacement vectors for 2 sides

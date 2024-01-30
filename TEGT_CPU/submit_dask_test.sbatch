@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --qos regular
+#SBATCH --qos debug
 #SBATCH --job-name test
 #SBATCH --constraint cpu
-#SBATCH --nodes=1
-#SBATCH --time=02:00:00
+#SBATCH --nodes=2
+#SBATCH --time=00:20:00
 #SBATCH --ntasks-per-node=40
-module load julia
+
 module load cpu
 #module load cudatoolkit/11.7
 module load python/3.9-anaconda-2021.11

@@ -6,14 +6,14 @@ if use_cupy:
 else:
     import autograd.numpy as lp  # Thinly-wrapped numpy
     from autograd import grad
-    from scipy.spatial.distance import cdist
 
+from scipy.spatial.distance import cdist
 import numpy as np 
 import scipy.linalg as spla
-#from TEGT_GPU.TB_Utils_cupy_V2 import *
-from TB_Utils_cupy_V2 import *
-#from TEGT_GPU.TB_parameters_cupy_V2 import *
-from TB_parameters_cupy_V2 import *
+from TEGT_CPU.TB_Utils import *
+#from TB_Utils import *
+from TEGT_CPU.TB_parameters import *
+#from TB_parameters import *
 
 def get_recip_cell(cell):
     a1 = cell[:, 0]

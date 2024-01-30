@@ -11,11 +11,6 @@ Created on Wed Jun 21 17:14:50 2023
 
 @author: danpa
 """
-#from julia.api import Julia
-#jl = Julia(compiled_modules=False)
-#jl.eval('include("TEGT_TB.jl")')
-#from julia import Main
-
 import ase.io
 import numpy as np
 import os
@@ -23,14 +18,13 @@ import json
 import subprocess
 from ase.calculators.calculator import Calculator, all_changes
 from lammps import PyLammps
-#import ase as PyLammps
 import joblib
 from joblib import Parallel, delayed
-#import TEGT_GPU
-#from TEGT_GPU.TEGT_TB_cupy import *
-from TEGT_TB_cupy import *
-#import dask
-#from dask.distributed import Client
+import TEGT_CPU
+from TEGT_CPU.TEGT_TB import *
+#from TEGT_TB_cupy import *
+import dask
+from dask.distributed import Client
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
@@ -59,8 +53,8 @@ class TEGT_Calc(Calculator):
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
 
-        #self.repo_root = os.path.join("/".join(TEGT_GPU.__file__.split("/")[:-1]))
-        self.repo_root = os.getcwd()
+        self.repo_root = os.path.join("/".join(TEGT_GPU.__file__.split("/")[:-1]))
+        #self.repo_root = os.getcwd()
         self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
                      "Rebo":"CH.rebo",
@@ -214,27 +208,28 @@ class TEGT_Calc(Calculator):
         #this works across multiple nodes
 
         #dask
-        """scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
+        if self.parallel=="dask":
+            scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
 
-        client = Client(scheduler_file=scheduler_file)
+            client = Client(scheduler_file=scheduler_file)
         
-        futures = client.map(tb_fxn, np.arange(self.nkp))
-        tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()"""
+            futures = client.map(tb_fxn, np.arange(self.nkp))
+            tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()
 
         #serial
-        """results = []
-        for i in range(self.nkp):
-            e,f = tb_fxn(i)
-            #tb_energy += e
-            #tb_forces += f
-            results.append((e,f))
-        tb_energy, tb_forces = self.reduce_energy(results)"""
+        elif self.parallel=="serial":
+            results = []
+            for i in range(self.nkp):
+                e,f = tb_fxn(i)
+                results.append((e,f))
+            tb_energy, tb_forces = self.reduce_energy(results)
         #joblib
-        ncpu = joblib.cpu_count()
-        output = Parallel(n_jobs=ncpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
-        for i in range(self.nkp):
-            tb_energy += np.squeeze(output[i][0])
-            tb_forces += np.squeeze(output[i][1].real)
+        elif self.parallel=="joblib":
+            ncpu = joblib.cpu_count()
+            output = Parallel(n_jobs=ncpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
+            for i in range(self.nkp):
+                tb_energy += np.squeeze(output[i][0])
+                tb_forces += np.squeeze(output[i][1].real)
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
     def get_band_structure(self,atoms,kpoints):
@@ -304,6 +299,7 @@ class TEGT_Calc(Calculator):
              "intralayer potential":None,
              "interlayer potential":None,
              "kmesh":(1,1,1),
+             "parallel":"joblib",
              "output":".",
              } 
         orbs_basis = {"s,px,py,pz":4,"pz":1}
@@ -311,6 +307,7 @@ class TEGT_Calc(Calculator):
             model_dict[k] = input_dict[k]
         self.model_dict = model_dict
         self.norbs_per_atoms = orbs_basis[self.model_dict["basis"]]
+        self.parallel = model_dict["parallel"]
         if not self.model_dict["tight binding parameters"]:
             use_tb=False
         else:

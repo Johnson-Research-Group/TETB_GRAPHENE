@@ -78,13 +78,13 @@ if __name__=="__main__":
     for t in tb_models:
         for k in nkp:
             executable = "python fit_potentials.py -m "+t+" -t interlayer -k "+str(k)+" -g True"
-            #submit_batch_file_perlmutter(executable,batch_options_perlmutter)
             batch_options["--job-name"]="nkp"+str(k)+"_interlayer"
             batch_options["--output"]= "nkp"+str(k)+"_interlayer.log"
-            submit_batch_file_uiuc_cc(executable,batch_options)
+            submit_batch_file_perlmutter(executable,batch_options_perlmutter)
+            #submit_batch_file_uiuc_cc(executable,batch_options)
 
             executable = "python fit_potentials.py -m "+t+" -t intralayer -k "+str(k)+" -g True" # -oz tb_weight"
             batch_options["--job-name"]="nkp"+str(k)+"_intralayer"
             batch_options["--output"]= "nkp"+str(k)+"_intralayer.log"
-            submit_batch_file_perlmutter(executable,batch_options)
+            #submit_batch_file_perlmutter(executable,batch_options)
             #submit_batch_file_uiuc_cc(executable,batch_options)

@@ -6,11 +6,11 @@ if use_cupy:
 else:
     import autograd.numpy as lp  # Thinly-wrapped numpy
     from autograd import jacobian
-    from scipy.spatial.distance import cdist
-
+    
+from scipy.spatial.distance import cdist
 import numpy as np
-#from TEGT_GPU.TB_parameters_cupy_V2 import *
-from TB_parameters_cupy_V2 import *
+from TEGT_CPU.TB_parameters import *
+#from TB_parameters import *
 import matplotlib.pyplot as plt
 import glob
 import scipy.linalg as spla

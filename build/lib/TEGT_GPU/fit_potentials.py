@@ -5,7 +5,7 @@ Created on Wed Sep 27 14:39:20 2023
 @author: danpa
 """
 
-import TEGT_calc
+from TEGT_GPU import TEGT_calc as TEGT_calc
 import flatgraphene as fg
 import numpy as np
 import ase.io
@@ -253,6 +253,7 @@ if __name__ == '__main__':
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                         "basis":"pz",
                         "kmesh":kmesh,
+                        "parallel":"joblib",
                         "intralayer potential":"Pz rebo",
                         "interlayer potential":"Pz KC inspired",
                         'output':args.output})
@@ -338,6 +339,7 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
                           "kmesh":kmesh,
+                          "parallel":"joblib",
                           #"intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225_final_version"),
                            "intralayer potential":"Pz rebo",
                            #"intralayer potential":"Rebo",
@@ -427,8 +429,11 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
                           "kmesh":kmesh,
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
-                          "interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225_final_version"),
+                           "parallel":"joblib",
+                          "intralayer potential":"Pz rebo", 
+                           "interlayer potential":"Pz KC inspired",
+                           #"intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
+                          #"interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225_final_version"),
                           'output':args.output})
         intralayer_pot = glob.glob(os.path.join(args.output,"*CH_pz*"),recursive=True)[0]
         model_dict["intralayer potential"] = intralayer_pot 
@@ -479,7 +484,7 @@ if __name__ == '__main__':
             print(stacking+" qmc layer separation = "+str(sep_qmc)+" (angstroms)")
 
             plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " tegt",c=colors[i])
-            plt.scatter(d_,np.array(energy_dis_tb)-(energy_dis_tb[-1]),label=stacking + " TB",c=colors[i],marker=",")
+            #plt.scatter(d_,np.array(energy_dis_tb)-(energy_dis_tb[-1]),label=stacking + " TB",c=colors[i],marker=",")
             plt.scatter(d_,np.array(energy_dis_qmc)-E0_qmc,label=stacking + " qmc",c=colors[i])
         plt.xlabel("interlayer distance (Angstroms)")
         plt.ylabel("interlayer energy (eV)")
@@ -493,6 +498,7 @@ if __name__ == '__main__':
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
                           "kmesh":kmesh,
+                           "parallel":"joblib",
                           "intralayer potential":os.path.join(args.output,"CH_pz.rebo"),
                           "intralayer potential":"Pz rebo",
                            #"intralayer potential":"Rebo",
@@ -518,6 +524,7 @@ if __name__ == '__main__':
             model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
                           "kmesh":kmesh,
+                          "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           #"intralayer potential":"Rebo",
                           "interlayer potential":"Pz KC inspired",

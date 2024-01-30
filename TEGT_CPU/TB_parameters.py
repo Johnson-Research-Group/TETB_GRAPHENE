@@ -12,10 +12,10 @@ else:
     import numpy as lp
     from scipy.spatial.distance import cdist
 import numpy as np
-from numba import njit
+#from numba import njit
 import matplotlib.pyplot as plt
-#import TEGT_GPU.descriptors as descriptors
-import descriptors
+import TEGT_CPU.descriptors as descriptors
+#import descriptors
 
 
 #########################################################################################
@@ -544,10 +544,10 @@ def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj) : #lattice_vectors, atom
     inter = 2.7/slope/nn_dist
     hoppings = slope * dist + inter
     return hoppings
-@njit
+#@njit
 def letb_interlayer(lattice_vectors, atomic_basis, i, j, di, dj):
     return None
-@njit
+#@njit
 def letb_intralayer(lattice_vectors, atomic_basis, i, j, di, dj):
     return None
 
