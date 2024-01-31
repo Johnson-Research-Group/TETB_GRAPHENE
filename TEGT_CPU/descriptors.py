@@ -12,7 +12,7 @@ import numpy as np
 import h5py
 import pandas as pd
 import numpy as np
-from numba import njit
+#from numba import njit
 
 #@njit
 def nnmat(lattice_vectors, atomic_basis):
