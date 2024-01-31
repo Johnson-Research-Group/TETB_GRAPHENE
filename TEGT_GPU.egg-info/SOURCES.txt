@@ -1,8 +1,8 @@
 MANIFEST.in
 setup.py
-TEGT_GPU/TB_Utils_cupy_V2.py
-TEGT_GPU/TB_parameters_cupy_V2.py
-TEGT_GPU/TEGT_TB_cupy.py
+TEGT_GPU/TB_Utils.py
+TEGT_GPU/TB_parameters.py
+TEGT_GPU/TEGT_TB.py
 TEGT_GPU/TEGT_calc.py
 TEGT_GPU/__init__.py
 TEGT_GPU/descriptors.py

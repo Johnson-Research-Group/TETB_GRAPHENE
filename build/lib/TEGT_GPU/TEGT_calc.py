@@ -21,7 +21,7 @@ from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
 import TEGT_GPU
-from TEGT_GPU.TEGT_TB_cupy import *
+from TEGT_GPU.TEGT_TB import *
 #from TEGT_TB_cupy import *
 import dask
 from dask.distributed import Client

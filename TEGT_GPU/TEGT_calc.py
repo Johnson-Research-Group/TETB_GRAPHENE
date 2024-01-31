@@ -20,8 +20,8 @@ from ase.calculators.calculator import Calculator, all_changes
 from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
-import TEGT_CPU
-from TEGT_CPU.TEGT_TB import *
+import TEGT_GPU
+from TEGT_GPU.TEGT_TB import *
 #from TEGT_TB_cupy import *
 import dask
 from dask.distributed import Client

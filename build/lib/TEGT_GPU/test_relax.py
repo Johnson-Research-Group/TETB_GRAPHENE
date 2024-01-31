@@ -118,11 +118,11 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=False
-    test_tbenergy=False
+    test_tbforces=True
+    test_tbenergy=True
     test_lammps=False
     test_bands=False
-    test_relaxation=True
+    test_relaxation=False
     test_scaling=False
     theta = 21.78
     #theta = 5.09
@@ -130,7 +130,7 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
-                          "kmesh":(15,15,1),
+                          "kmesh":(1,1,1),
                           "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
@@ -142,13 +142,13 @@ if __name__=="__main__":
         #test forces pairwise
         a_ = np.linspace(1.2,1.6,3)
         n_ = [1] #np.arange(2,4,1)
-        n=4
+        n = 4
         
         for i,a in enumerate(a_):
             #    for j,n in enumerate(n_):
                 #atoms = get_stack_atoms(n,a)
-            #atoms = get_atom_pairs(n,a)
-            atoms = get_random_atoms(n,a)
+            atoms = get_atom_pairs(n,a)
+            #atoms = get_random_atoms(n,a)
             pos = atoms.positions
             print("n= ",n," a= ",a)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
@@ -302,7 +302,7 @@ if __name__=="__main__":
         from ase.optimize import BFGS
         #test relaxation
         #theta = 2.88
-        theta = 21.78
+        theta = 5.09
         atoms = get_twist_geom(theta,3.35)
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
