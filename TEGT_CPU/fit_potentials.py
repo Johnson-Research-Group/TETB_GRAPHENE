@@ -499,27 +499,36 @@ if __name__ == '__main__':
                           "basis":"pz",
                           "kmesh":kmesh,
                            "parallel":"joblib",
-                          "intralayer potential":os.path.join(args.output,"CH_pz.rebo"),
+                          #"intralayer potential":os.path.join(args.output,"CH_pz.rebo"),
                           "intralayer potential":"Pz rebo",
                            #"intralayer potential":"Rebo",
                           #"interlayer potential":os.path.join(args.output,"KC_insp_pz.txt"),
                            "interlayer potential":"Pz KC inspired",
                            'output':args.output #+"lat_con_test"
                           })
-        #intralayer_pot = glob.glob(os.path.join(args.output,"CH_pz*_final_version"),recursive=True)[0]
-        #model_dict["intralayer potential"] = intralayer_pot
-        #interlayer_pot = glob.glob(os.path.join(args.output,"*KC_insp*"),recursive=True)[0]
-        #model_dict["interlayer potential"] = interlayer_pot
+        intralayer_pot = glob.glob(os.path.join(args.output,"CH_pz*_final_version"),recursive=True)[0]
+        model_dict["intralayer potential"] = intralayer_pot
+        interlayer_pot = glob.glob(os.path.join(args.output,"*KC_insp*"),recursive=True)[0]
+        model_dict["interlayer potential"] = interlayer_pot
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+
+        model_dict = dict({"tight binding parameters":None,
+                           "basis":"pz",
+                          "intralayer potential":"Pz rebo",
+                           "intralayer potential":"Rebo",
+                           "interlayer potential":"kolmogorov crespi",
+                           'output':args.output +"classical"
+                          })
+        calc_obj_classical = TEGT_calc.TEGT_Calc(model_dict)
         # 'Q_CC' ,'alpha_CC', 'A_CC'
         #'BIJc_CC1', 'BIJc_CC2','BIJc_CC3',
         #'Beta_CC1', 'Beta_CC2', 'Beta_CC3
-        p0 = [0.3134602960833/1.2, 4.7465390606595, 10953.544162170,\
-             12388.79197798/1.1, 17.56740646509/1.1, 30.71493208065/1.1,\
-             4.7204523127 , 1.4332132499, 1.3826912506]
-        rebo_file = glob.glob(os.path.join(args.output,"CH_pz.rebo*"),recursive=True)[0]
-        write_rebo(p0,rebo_file) 
-        lat_con_test=True
+        #p0 = [0.3134602960833/1.2, 4.7465390606595, 10953.544162170,\
+        #     12388.79197798/1.1, 17.56740646509/1.1, 30.71493208065/1.1,\
+        #     4.7204523127 , 1.4332132499, 1.3826912506]
+        #rebo_file = glob.glob(os.path.join(args.output,"CH_pz.rebo*"),recursive=True)[0]
+        #write_rebo(p0,rebo_file) 
+        lat_con_test=False
         if lat_con_test:
             model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
@@ -634,9 +643,13 @@ if __name__ == '__main__':
         tegtb_energy = []
         dft_energy = []   
         nn_dist = []
+        strain_x = []
+        strain_y = []
         tb_energy = []
         rebo_energy = []
         atoms_id =[]
+        unstrained_atoms = get_monolayer_atoms(0,0,a=2.462)
+        unstrained_cell = unstrained_atoms.get_cell()
         
         for row in db.select():
     
@@ -648,11 +661,17 @@ if __name__ == '__main__':
             print("lammps energy = ",tote/len(atoms)," (eV/atom)")
             print("tb energy = ",row.data.tb_energy," (eV/atom)")
             #e = atoms.get_potential_energy()/len(atoms)
+            atoms.calc = calc_obj_classical
+            classical_e = atoms.get_potential_energy()/len(atoms)
             tegtb_energy.append(e)
             dft_energy.append(row.data.total_energy)
             tb_energy.append(row.data.tb_energy)
-            rebo_energy.append(tote/len(atoms))
+            rebo_energy.append(classical_e)
             nconfig+=1
+
+            cell = atoms.get_cell()
+            strain_x.append( np.linalg.norm(cell[0,:]))
+            strain_y.append( np.linalg.norm(cell[1,:]))
 
             pos = atoms.positions
             distances = distance.cdist(pos, pos)
@@ -664,16 +683,22 @@ if __name__ == '__main__':
         rebo_min_ind = np.argmin(tegtb_energy)
         rebo_min = tegtb_energy[rebo_min_ind]
         tb_min = tb_energy[rebo_min_ind]
-        emprebo_min = rebo_energy[rebo_min_ind]
-        rms = []
+        emprebo_min_ind = np.argmin(rebo_energy)
+        emprebo_min = rebo_energy[emprebo_min_ind]
+        unstrained_x = strain_x[rebo_min_ind]
+        unstrained_y = strain_y[rebo_min_ind]
+        rms_tetb  = []
+        rms_rebo = []
         for i,e in enumerate(tegtb_energy):
             line = np.linspace(0,1,10)
             ediff_line = line*((dft_energy[i]-dft_min) - (e-rebo_min)) + (e-rebo_min)
             tmp_rms = np.abs((dft_energy[i]-dft_min) - (e-rebo_min))
+            tmp_rebo_rms = np.abs((dft_energy[i]-dft_min) - (rebo_energy[i]-emprebo_min))
             #if tmp_rms >0.15:
             #    del db[atoms_id[i]]
             #    continue
-            rms.append(tmp_rms)
+            rms_tetb.append(tmp_rms)
+            rms_rebo.append(tmp_rebo_rms)
             print("dft energy (eV/atom) = ",dft_energy[i]-dft_min)
             print("tegtb energy (eV/atom) = ",e-rebo_min)
             print("tb energy (eV/atom) = ",tb_energy[i]-tb_min)
@@ -684,23 +709,65 @@ if __name__ == '__main__':
                 continue
             if i==0:
                 plt.scatter(average_distance,e-rebo_min,color="red",label="TEGT")
+                plt.scatter(average_distance,rebo_energy[i]-emprebo_min,color="orange",label="Rebo")
                 #plt.scatter(average_disctance,tb_energyi[i]-tb_min,color="green",label="TB")
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue",label="DFT")
                 plt.plot(average_distance*np.ones_like(line),ediff_line,color="black")
             else:
                 plt.scatter(average_distance,e-rebo_min,color="red")
+                plt.scatter(average_distance,rebo_energy[i]-emprebo_min,color="orange")
                 #plt.scatter(average_distance,tb_energy[i]-tb_min,color="green")
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue")
                 plt.plot(average_distance*np.ones_like(line),ediff_line,color="black")
-        print(rms)
-        rms = np.mean(np.abs(np.array(tegtb_energy)-rebo_min-(np.array(dft_energy)-dft_min)))
         
-        print("average difference in energy across all configurations = "+str(rms)+" (eV/atom)")
+        rms_tetb = np.mean(np.abs(np.array(tegtb_energy)-rebo_min-(np.array(dft_energy)-dft_min)))
+        rms_rebo = np.mean(np.abs(np.array(rebo_energy)-emprebo_min-(np.array(dft_energy)-dft_min)))
+        
+        print("average difference in tetb energy across all configurations = "+str(rms_tetb)+" (eV/atom)")
+        print("average difference in rebo energy across all configurations = "+str(rms_rebo)+" (eV/atom)")
         plt.xlabel("average nearest neighbor distance (angstroms)")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.title("Corrective Intralayer Potential for mLG, num kpoints = "+str(args.nkp))
         plt.legend()
         plt.savefig("rebo_test_nkp"+str(nkp)+".png")
         plt.show()
+        plt.clf()
 
 
+        strain_x = (np.array(strain_x) - unstrained_x)/unstrained_x
+        strain_y = (np.array(strain_y) - unstrained_y)/unstrained_y
+        tegtb_energy = np.array(tegtb_energy)-rebo_min
+        dft_energy = np.array(dft_energy)-dft_min
+        rebo_energy = np.array(rebo_energy)-emprebo_min
+        strain_x = np.round(strain_x,decimals=5)
+        strain_x_set = np.unique(strain_x)
+        for i,dx in enumerate(strain_x_set):
+            strain_ind = np.isclose(strain_x,dx*np.ones_like(strain_x),rtol=1e-4)
+            strain_sort_ind = np.argsort(strain_y[strain_ind])
+            color = np.random.rand(3)
+            plt.plot(strain_y[strain_ind][strain_sort_ind],tegtb_energy[strain_ind][strain_sort_ind],c=color)
+            plt.plot(strain_y[strain_ind][strain_sort_ind],dft_energy[strain_ind][strain_sort_ind],linestyle="dashed",c=color)
+            plt.plot(strain_y[strain_ind][strain_sort_ind],rebo_energy[strain_ind][strain_sort_ind],linestyle="dotted",c=color)
+        plt.xlabel("strain along lattice vector 1")
+        plt.ylabel("energy above ground state (eV/atom)")
+        plt.title("Corrective Intralayer Potential for mLG with biaxial strain, num kpoints = "+str(args.nkp))
+        plt.savefig("strain_energy_curves"+str(args.nkp)+".png")
+        plt.clf()
+
+
+        plt.scatter(strain_x,strain_y,c = ((np.array(tegtb_energy)) -(np.array(dft_energy))))
+        plt.xlabel("strain along lattice vector 1")
+        plt.ylabel("strain along lattice vector 2")
+        plt.colorbar()
+        plt.title("difference between TETB and dft total energies, nkp = "+str(args.nkp))
+        plt.savefig("tetb_intralayer_surface_plot"+str(args.nkp)+".png")
+        plt.clf()
+
+        plt.scatter(strain_x,strain_y,c = ((np.array(rebo_energy)) -(np.array(dft_energy))))
+        plt.xlabel("strain along lattice vector 1")
+        plt.ylabel("strain along lattice vector 2")
+        plt.colorbar()
+        plt.title("difference between REBO and dft total energies")
+        plt.savefig("rebo_intralayer_surface_plot.png")
+        plt.clf()
+            
