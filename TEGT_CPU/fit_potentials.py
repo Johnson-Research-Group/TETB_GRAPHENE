@@ -217,11 +217,13 @@ class fit_potentials_tblg:
 
         elif self.optimizer_type=="global":
             #fit each parameter individually, multiple times
-            niter=10
+            niter=2
+            var_names = ['Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2','BIJc_CC3','Beta_CC1', 'Beta_CC2', 'Beta_CC3']
             self.original_p0=p0.copy()
             for n in  range(niter):
                 for i,p in enumerate(p0):
                     self.fit_param = i
+
                     popt = scipy.optimize.minimize(self.objective,p, method='Nelder-Mead')
                     self.original_p0[i] = pop        
             params = self.original_p0        
@@ -415,10 +417,12 @@ if __name__ == '__main__':
         print("fitting intralayer potential")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
-        #Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 , BIJc_CC3, Beta_CC1, Beta_CC2, Beta_CC3 
+        # 'Q_CC' ,'alpha_CC', 'A_CC'
+        #'BIJc_CC1', 'BIJc_CC2','BIJc_CC3',
+        #'Beta_CC1', 'Beta_CC2', 'Beta_CC3
         p0 = [0.3134602960833/1.2, 4.7465390606595, 10953.544162170,\
-             12388.79197798/1.1, 17.56740646509/1.1, 30.71493208065/1.1,\
-             4.7204523127 , 1.4332132499, 1.3826912506]
+             12388.79197798/1.086, 17.56740646509/1.113, 30.71493208065/1.1,\
+             4.7204523127 , 1.4332132499, 1.3826912506] 
         p0_bounds = [(-100,100),(-100,100),(-np.inf,np.inf),(-np.inf,np.inf),(-np.inf,np.inf),(-np.inf,np.inf),(-np.inf,np.inf),(-np.inf,np.inf),(-np.inf,np.inf)]
         potential = "rebo"
         fitting_obj = fit_potentials_tblg(calc_obj, db, potential,optimizer_type=args.optimizer_type)
@@ -506,10 +510,10 @@ if __name__ == '__main__':
                            "interlayer potential":"Pz KC inspired",
                            'output':args.output #+"lat_con_test"
                           })
-        intralayer_pot = glob.glob(os.path.join(args.output,"CH_pz*_final_version"),recursive=True)[0]
-        model_dict["intralayer potential"] = intralayer_pot
-        interlayer_pot = glob.glob(os.path.join(args.output,"*KC_insp*"),recursive=True)[0]
-        model_dict["interlayer potential"] = interlayer_pot
+        #intralayer_pot = glob.glob(os.path.join(args.output,"CH_pz*_final_version"),recursive=True)[0]
+        #model_dict["intralayer potential"] = intralayer_pot
+        #interlayer_pot = glob.glob(os.path.join(args.output,"*KC_insp*"),recursive=True)[0]
+        #model_dict["interlayer potential"] = interlayer_pot
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
         model_dict = dict({"tight binding parameters":None,
@@ -524,8 +528,9 @@ if __name__ == '__main__':
         #'BIJc_CC1', 'BIJc_CC2','BIJc_CC3',
         #'Beta_CC1', 'Beta_CC2', 'Beta_CC3
         #p0 = [0.3134602960833/1.2, 4.7465390606595, 10953.544162170,\
-        #     12388.79197798/1.1, 17.56740646509/1.1, 30.71493208065/1.1,\
+        #     12388.79197798/1.086, 17.56740646509/1.113, 30.71493208065/1.1,\
         #     4.7204523127 , 1.4332132499, 1.3826912506]
+
         #rebo_file = glob.glob(os.path.join(args.output,"CH_pz.rebo*"),recursive=True)[0]
         #write_rebo(p0,rebo_file) 
         lat_con_test=False
