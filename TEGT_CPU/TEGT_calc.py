@@ -53,7 +53,7 @@ class TEGT_Calc(Calculator):
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
 
-        self.repo_root = os.path.join("/".join(TEGT_GPU.__file__.split("/")[:-1]))
+        self.repo_root = os.path.join("/".join(TEGT_CPU.__file__.split("/")[:-1]))
         #self.repo_root = os.getcwd()
         self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
