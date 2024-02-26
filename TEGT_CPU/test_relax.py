@@ -15,7 +15,7 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
-import TEGT_CPU.TEGT_calc
+from TEGT_CPU import TEGT_calc
 
 def get_atom_pairs(n,a):
     L=n*a+10
@@ -136,7 +136,7 @@ if __name__=="__main__":
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
     
-    calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+    calc_obj = TEGT_calc.TEGT_Calc(model_dict)
     
     if test_tbforces:
         #test forces pairwise
@@ -307,12 +307,12 @@ if __name__=="__main__":
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
                           "kmesh":(15,15,1),
-                          "parallel":"dask",
+                          "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
 
-        calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
         #atoms = get_graphite(3.35)
         atoms.calc = calc_obj
         calc_folder = "theta_"+str(theta).replace(".","_")
