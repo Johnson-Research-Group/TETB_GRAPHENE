@@ -25,6 +25,7 @@ from TEGT_GPU.TEGT_TB import *
 #from TEGT_TB_cupy import *
 import dask
 from dask.distributed import Client
+from time import time
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
@@ -219,14 +220,22 @@ class TEGT_Calc(Calculator):
         #serial
         elif self.parallel=="serial":
             results = []
+            start_time = time()
             for i in range(self.nkp):
                 e,f = tb_fxn(i)
                 results.append((e,f))
             tb_energy, tb_forces = self.reduce_energy(results)
+            end_time = time()
+            print("time for tight binding = ",end_time - start_time)
         #joblib
         elif self.parallel=="joblib":
-            ncpu = joblib.cpu_count()
-            output = Parallel(n_jobs=ncpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
+            scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
+            client = Client(scheduler_file=scheduler_file)
+            with joblib.parallel_config(backend="dask"):
+                output = joblib.Parallel()(
+                joblib.delayed(tb_fxn)(i) for i in range(self.nkp))
+            #ncpu = joblib.cpu_count()
+            #output = Parallel(n_jobs=ncpu)(delayed(tb_fxn)(i) for i in range(self.nkp))
             for i in range(self.nkp):
                 tb_energy += np.squeeze(output[i][0])
                 tb_forces += np.squeeze(output[i][1].real)
@@ -290,10 +299,10 @@ class TEGT_Calc(Calculator):
     
     ##########################################################################
     def create_model(self,input_dict):
-        """setup total energy model based on input dictionary parameters 
-        using mpi and latte will result in ase optimizer to be used, 
+        """setup total energy model based on input dictionary parameters
+        using mpi and latte will result in ase optimizer to be used,
         else lammps runs relaxation """
-        
+
         model_dict={"tight binding parameters":None,
              "basis":None,
              "intralayer potential":None,
@@ -301,11 +310,14 @@ class TEGT_Calc(Calculator):
              "kmesh":(1,1,1),
              "parallel":"joblib",
              "output":".",
-             } 
+             }
         orbs_basis = {"s,px,py,pz":4,"pz":1}
         for k in input_dict.keys():
             model_dict[k] = input_dict[k]
+
         self.model_dict = model_dict
+        self.kpoints = self.k_uniform_mesh(self.model_dict['kmesh'])
+        self.nkp = np.shape(self.kpoints)[0]
         self.norbs_per_atoms = orbs_basis[self.model_dict["basis"]]
         self.parallel = model_dict["parallel"]
         if not self.model_dict["tight binding parameters"]:
@@ -313,7 +325,6 @@ class TEGT_Calc(Calculator):
         else:
             use_tb=True
         self.use_tb = use_tb
-
         if self.model_dict["intralayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
             if os.path.exists(self.model_dict["intralayer potential"]):
@@ -325,9 +336,9 @@ class TEGT_Calc(Calculator):
             self.rebo_file = os.path.join(self.param_root,self.option_to_file[self.model_dict["intralayer potential"]])
             if np.prod(self.model_dict['kmesh'])>1:
                 if self.model_dict["intralayer potential"]:
-                    if self.model_dict["intralayer potential"].split(" ")[-1]!='nkp225':
-                        self.model_dict["intralayer potential"] = self.model_dict["intralayer potential"]+' nkp225'
-                        self.rebo_file+="_nkp225"
+                    if self.model_dict["intralayer potential"].split(" ")[-1]!='nkp'+str(self.nkp):
+                        self.model_dict["intralayer potential"] = self.model_dict["intralayer potential"]+' nkp'+str(self.nkp)
+                        self.rebo_file+="_nkp"+str(self.nkp)
 
         if self.model_dict["interlayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
@@ -340,9 +351,9 @@ class TEGT_Calc(Calculator):
             self.kc_file = os.path.join(self.param_root,self.option_to_file[self.model_dict["interlayer potential"]])
             if np.prod(self.model_dict["kmesh"])>1:
                 if self.model_dict["interlayer potential"]:
-                    if self.model_dict["interlayer potential"].split(" ")[-1]!='nkp225':
-                        self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp225'
-                        self.kc_file+="_nkp225"
+                    if self.model_dict["interlayer potential"].split(" ")[-1]!='nkp'+str(self.nkp):
+                        self.model_dict["interlayer potential"] = self.model_dict["interlayer potential"]+' nkp'+str(self.nkp)
+                        self.kc_file+="_nkp"+str(self.nkp)
         if not self.use_tb:
             #if tight binding model is not called for override choices and use only classical potentials
             self.kc_file = os.path.join(self.param_root,self.option_to_file["kolmogorov crespi"])
@@ -357,7 +368,6 @@ class TEGT_Calc(Calculator):
             subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
             self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
             self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
-
 
     def k_uniform_mesh(self,mesh_size):
         r""" 
