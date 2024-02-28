@@ -118,10 +118,10 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=True
-    test_tbenergy=True
+    test_tbforces=False
+    test_tbenergy=False
     test_lammps=False
-    test_bands=False
+    test_bands=True
     test_relaxation=False
     test_scaling=False
     theta = 21.78
@@ -131,7 +131,7 @@ if __name__=="__main__":
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
                           "kmesh":(1,1,1),
-                          "parallel":"joblib",
+                          "parallel":"serial",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -304,13 +304,14 @@ if __name__=="__main__":
         #theta = 2.88
         theta = 5.09
         atoms = get_twist_geom(theta,3.35)
+        calc_folder = "theta_"+str(theta).replace(".","_")
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
-                          "kmesh":(15,15,1),
-                          "parallel":"dask",
+                          "kmesh":(11,11,1),
+                          "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
-                          'output':"theta_21_78"})
+                          'output':calc_folder})
 
         calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
         #atoms = get_graphite(3.35)
@@ -327,6 +328,5 @@ if __name__=="__main__":
         #           logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
         dyn = BFGS(atoms,
                    trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
-                   logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"),
-                   restart = os.path.join(calc_folder,"theta_"+str(theta)+".restart"))
+                   logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
         dyn.run(fmax=0.00005)

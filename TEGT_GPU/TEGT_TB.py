@@ -21,15 +21,8 @@ def get_recip_cell(cell):
     return cp.array([b1, b2, b3])
 
 def generalized_eigen(A,B):
-    lambda_B,Phi_B = cp.linalg.eigh(B)
-    Lambda_B_squareRoot = cp.nan_to_num(lambda_B**0.5) #+0.000001
-    del lambda_B
-    Lambda_B_squareRoot = cp.diag(Lambda_B_squareRoot)
-    Phi_B = Phi_B.dot(cp.linalg.inv(Lambda_B_squareRoot))
-    A_hat = (Phi_B.T).dot(A).dot(Phi_B)
-    Lambda_A, Phi_A = cp.linalg.eigh(A_hat)
-    Phi = Phi_B.dot(Phi_A)
-    return Lambda_A, Phi
+    renorm_A  = cp.linalg.inv(B) @ A
+    return cp.linalg.eigh(renorm_A)
 
 def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10):
     atom_positions = cp.asarray(atom_positions)
@@ -56,7 +49,6 @@ def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str,rcut = 10
         Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvalues,eigvectors, params_str,kpoints[k,:] )
 
     return cp.asnumpy(Energy),cp.asnumpy(Forces)
-    #return Energy, Forces
 
 def get_interlayer_tb_forces(atom_positions,mol_id,cell,kpoints,params_str):
     atom_positions = np.asarray(atom_positions)
@@ -102,7 +94,6 @@ def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str, r
         nocc = int(natoms / 2)
         Energy += 2 * np.sum(np.sort(eigvalues)[:nocc])
         Forces += get_hellman_feynman_fd(atom_positions,mol_id, cell, eigvectors, params_str,kpoints[k]) 
-    #return np.asnumpy(Energy), np.asnumpy(Forces)
     return Energy,Forces
 
 def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str):
@@ -121,63 +112,8 @@ def calc_band_structure(atom_positions, mol_id, cell, kpoints, params_str):
     evecs = cp.zeros((natoms, natoms, nkp), dtype=cp.complex64)
     
     for k in range(nkp):
-        #Ham = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k], params_str)
         Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
-        eigvalues,eigvectors = generalized_eigen(Ham,Overlap) 
+        eigvalues,eigvectors = generalized_eigen(Ham,Overlap)  
         evals[:, k] = eigvalues
         evecs[:, :, k] = eigvectors
-    return np.asnumpy(evals), np.asnumpy(evecs)
-    #return evals,evecs
-
-def get_param_dict(params_str):
-    if params_str == "popov":
-        params = {
-            "B": {
-                "B": {
-                    "hopping": popov_hopping,
-                    "self_energy": -5.2887,
-                    "rcut": 3.7,
-                },
-                "Ti": {
-                    "hopping": porezag_hopping,
-                    "rcut": 5.29,
-                },
-            },
-            "Ti": {
-                "B": {
-                    "hopping": porezag_hopping,
-                    "rcut": 5.29,
-                },
-                "Ti": {
-                    "hopping": popov_hopping,
-                    "self_energy": -5.2887,
-                    "rcut": 3.7,
-                },
-            },
-        }
-    else:  # params_str == "nn"
-        params = {
-            "B": {
-                "B": {
-                    "hopping": nnhop,
-                    "self_energy": 0,
-                    "rcut": 3,
-                },
-                "Ti": {
-                    "hopping": nnhop,
-                    "rcut": 3,
-                },
-            },
-            "Ti": {
-                "B": {
-                    "hopping": nnhop,
-                    "rcut": 3,
-                },
-                "Ti": {
-                    "hopping": nnhop,
-                    "self_energy": 0,
-                    "rcut": 3,
-                },
-            },
-        }
-    return params
+    return cp.asnumpy(evals), cp.asnumpy(evecs)

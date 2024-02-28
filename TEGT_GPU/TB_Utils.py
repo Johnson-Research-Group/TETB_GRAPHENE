@@ -28,6 +28,14 @@ models_cutoff_intralayer={'letb':10,
                         'mk':10,
                         'porezag':3.7,
                         "nn":4.4}
+def get_unique_set(array):
+    unique_set = cp.array([])
+    for elem in array:
+        if elem in unique_set:
+            continue
+        else:
+            unique_set = cp.append(unique_set,elem)
+    return cp.array(unique_set)
 
 def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
@@ -45,7 +53,7 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     kpoint = cp.asarray(kpoint)/conversion
 
     layer_types = cp.asarray(layer_types)
-    layer_type_set = set(layer_types)
+    layer_type_set = get_unique_set(layer_types)
 
     natom = len(atomic_basis)
     diFull = []
@@ -57,7 +65,6 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
             diFull += [dx] * natom
             djFull += [dy] * natom
     distances = cdist(atomic_basis, extended_coords)
-    
     Ham = models_self_energy[model_type["interlayer"]]*cp.eye(natom,dtype=cp.complex64)
     Overlap = cp.eye(natom,dtype=cp.complex64)
     for i_int,i_type in enumerate(layer_type_set):
@@ -112,7 +119,7 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     tot_eng = 2 * cp.sum(eigvals[:nocc])
 
     Forces = cp.zeros((natoms,3))
-    layer_type_set = set(layer_types)
+    layer_type_set = get_unique_set(layer_types)
 
     diFull = []
     djFull = []
@@ -124,7 +131,7 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
             djFull += [dy] * natoms
     distances = cdist(atomic_basis, extended_coords)
 
-    gradH = np.zeros((len(diFull),natoms,3))
+    gradH = cp.zeros((len(diFull),natoms,3))
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
 
