@@ -15,7 +15,7 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
-import TEGT_CPU.TEGT_calc
+import TETB_GRAPHENE.TETB_GRAPHENE_calc
 
 def get_atom_pairs(n,a):
     L=n*a+10
@@ -122,9 +122,9 @@ if __name__=="__main__":
     test_tbenergy=False
     test_lammps=False
     test_bands=False
-    test_relaxation=False
+    test_relaxation=True
     test_scaling=False
-    test_kpoints=True
+    test_kpoints=False
     theta = 21.78
     #theta = 5.09
     
@@ -137,7 +137,7 @@ if __name__=="__main__":
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
     
-    calc_obj = TEGT_CPU.TEGT_calc.TEGT_Calc(model_dict)
+    calc_obj = TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
     csfont = {'fontname':'serif',"size":20} 
     if test_tbforces:
         #test forces pairwise
@@ -285,7 +285,7 @@ if __name__=="__main__":
         tb_energy_k = np.zeros(len(nkps))
         for i,nkp in enumerate(nkps):
             model_dict["kmesh"] = (nkp,nkp,1)    
-            calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+            calc_obj = TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             tb_energy_k[i] = tb_energy/len(atoms)
         print(tb_energy_k)
@@ -339,7 +339,7 @@ if __name__=="__main__":
                           "interlayer potential":"Pz KC inspired",
                           'output':calc_folder})
 
-        calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
         #atoms = get_graphite(3.35)
         atoms.calc = calc_obj
         calc_folder = "theta_"+str(theta).replace(".","_")

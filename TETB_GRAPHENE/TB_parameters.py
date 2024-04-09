@@ -1,20 +1,8 @@
-use_cupy=False
-use_autograd=True
-if use_cupy:
-    #import autograd.cupy as lp  # Thinly-wrapped numpy
-    from autograd import grad
-    #from cupyx.scipy.spatial.distance import cdist
-elif use_autograd:
-    import autograd.numpy as lp  # Thinly-wrapped numpy
-    from autograd import grad
-    from scipy.spatial.distance import cdist
-else:
-    import numpy as lp
-    from scipy.spatial.distance import cdist
+from scipy.spatial.distance import cdist
 import numpy as np
 #from numba import njit
 import matplotlib.pyplot as plt
-import TEGT_CPU.descriptors as descriptors
+import TETB_GRAPHENE.descriptors as descriptors
 #import descriptors
 
 

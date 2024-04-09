@@ -20,21 +20,20 @@ from ase.calculators.calculator import Calculator, all_changes
 from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
-import TEGT_CPU
-from TEGT_CPU.TEGT_TB import *
-#from TEGT_TB_cupy import *
+import TETB_GRAPHENE
+from TETB_GRAPHENE.TETB_GRAPHENE_TB import *
 import dask
-from dask.distributed import Client
+from dask.distributed import Client, LocalCluster
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
-class TEGT_Calc(Calculator):
+class TETB_GRAPHENE_Calc(Calculator):
     
     implemented_properties = ['energy','forces','potential_energy']
     def __init__(self,model_dict=None,restart_file=None, **kwargs):
         """
         ase calculator object that calculates total energies and forces given a 
-        total energy tight binding model. can specify number of kpoints to be either 1 or 225, 
+        total energy tight binding model. can kmesh to be either (1,1,1), (11,11,1) or (15,15,1), 
         or tight binding model.
         Parameters:
         :param model_dict: (dict) dictionary containing info on tb model, number of kpoints, interatomic corrective potentials
@@ -42,18 +41,19 @@ class TEGT_Calc(Calculator):
                                         "intralayer potential":None, (str) can be path to REBO potential file or keyword
                                         "interlayer potential":None, (str) can be path to interlayer potential file or keyword
                                         "kmesh":(1,1,1), (tuple) mesh of kpoints
+                                        "parallel":serial, (str) type of parallelization to use in tb calculation
                                         "output":".", (str) optional output directory
                                         } 
-
-        intralayer potential keywords = {REBO, Pz rebo, Pz rebo nkp225}
-        interlayer potential keywords = {kolmogorov crespi, KC inspired, Pz KC inspired, Pz KC inspired nkp225}
-
+                            parallel keywords = {"dask","joblib","serial"} **Note only dask can handle parallelization over multiple compute nodes
+                            intralayer potential keywords = {REBO, Pz rebo} 
+                            interlayer potential keywords = {kolmogorov crespi, Pz KC inspired} 
+        :param restart_file: (str) filename for restart file. default: cwd
         create_model() will automatically select correct potential given the input tight binding model and number of kpoints
         """
         Calculator.__init__(self, **kwargs)
         self.model_dict=model_dict
 
-        self.repo_root = os.path.join("/".join(TEGT_CPU.__file__.split("/")[:-1]))
+        self.repo_root = os.path.join("/".join(TETB_GRAPHENE.__file__.split("/")[:-1]))
         #self.repo_root = os.getcwd()
         self.param_root = os.path.join(self.repo_root,"parameters")
         self.option_to_file={
@@ -154,6 +154,18 @@ class TEGT_Calc(Calculator):
         return forces,pe,pe+ke
     
     def get_tb_fxn(self,positions,atom_types,cell,kpoints,tbparams,calc_type="force"):
+        """select the tight binding calculation to perform.
+        :param positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+        :param atom_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+        :param cell: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+        :param kpoints: (np.ndarray [number of kpoints,3]) array of kpoints to calculate tight binding calculation over
+
+        :param tbparams: (str) specify which tight binding model to use
+
+        :param calc_type: (str) type of tb calculation. options: force, force_fd (finite difference forces [slow]), bands"""
         if calc_type=="force":
             def func(i):
                 #get energy and force at a single kpoint from gpu
@@ -174,32 +186,37 @@ class TEGT_Calc(Calculator):
                 return evals,evecs
         return func
     
-    def reduce_bands(self,results):
+    def reduce_bands(self,results,return_evecs=False):
         evals = np.zeros((self.natoms,self.nkp))
-        evecs = np.zeros((self.natoms,self.natoms,self.nkp),dtype=complex)
+        if return_evecs:
+            evecs = np.zeros((self.natoms,self.natoms,self.nkp),dtype=complex)
         i=0
         for eva,eve in results:
             evals[:,i] = np.squeeze(eva)
-            evecs[:,:,i] = np.squeeze(eve)
+            if return_evecs:
+                evecs[:,:,i] = np.squeeze(eve)
             i+=1
-        return evals, evecs
+        if return_evecs:
+            return evals, evecs
+        else:
+            return evals
 
     def reduce_energy(self,results):
         total_force = np.zeros((self.natoms,3))
         total_energy = 0
+        
         for e, f in results:
             total_force += f.real
             total_energy += e
         return total_energy, total_force
-
-    def run_interlayer_force(self,atoms):
-        sym = atoms.get_chemical_symbols()
-        mol_id = atoms.get_array("mol-id")
-        interlayer_forces = get_interlayer_tb_forces(atoms.positions,mol_id,np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"])
-        return interlayer_forces/self.nkp
     
     def run_tight_binding(self,atoms,force_type="force"):
-        """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive)"""
+        """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive). 
+        This function handles parallelization over kpoints.
+
+        :param atoms: (ase.atoms object) must have array "mol-id" specifying the tight binding types
+        
+        :returns: tuple(float, np.ndarray [number of atoms, 3]) tight binding energy, tight binding forces"""
         sym = atoms.get_chemical_symbols()
         mol_id = atoms.get_array("mol-id")
         tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
@@ -211,6 +228,17 @@ class TEGT_Calc(Calculator):
 
         #dask
         if self.parallel=="dask":
+            cluster = LocalCluster()
+            client = dask.distributed.Client(cluster)
+            start_time = time()
+
+            futures = client.map(tb_fxn, np.arange(self.nkp))
+            tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()
+            end_time = time()
+
+            client.shutdown()
+            print("time for tight binding = ",end_time - start_time)
+            """
             from dask.distributed import performance_report
 
             ## some dask computation
@@ -218,17 +246,9 @@ class TEGT_Calc(Calculator):
 
             client = Client(scheduler_file=scheduler_file)
             from dask import config
-            #print(config.get('distributed.client'))
-            #print(config.get("distributed.scheduler"))
-            #exit()
-            #config.set({"distributed.scheduler.allowed-failures":300,
-            #              "distributed.scheduler.worker-ttl":"1000 minutes"})
-            #config.set({'distributed.scheduler.worker-ttl': None})
-            #config.set({"distributed.client.heartbeat":None})
-            #with performance_report(filename="dask-report.html"):
             with dask.config.set({'distributed.scheduler.worker-ttl':"1000 minutes"}):
                 futures = client.map(tb_fxn, np.arange(self.nkp))
-                tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()
+                tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()"""
 
         #serial
         elif self.parallel=="serial":
@@ -241,43 +261,52 @@ class TEGT_Calc(Calculator):
         elif self.parallel=="joblib":
             #ncpu = joblib.cpu_count()
             output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
-            #scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
-            #client = Client(scheduler_file=scheduler_file)
-            #with joblib.parallel_config(backend="dask"):
-            #output = joblib.Parallel(verbose=100)(joblib.delayed(tb_fxn)(i) for i in range(self.nkp))
             for i in range(self.nkp):
                 tb_energy += np.squeeze(output[i][0])
                 tb_forces += np.squeeze(output[i][1].real)
         return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
     def get_band_structure(self,atoms,kpoints):
+        """get band structure for a given ase.atoms object and path in kspace.
+         
+        :param atoms: (ase.atoms object) must have array "mol-id" specifying the tight binding types
+        
+        :param kpoints: (np.ndarray [Number of kpoints,3]) path in kspace to calculate bands over
+        
+        :returns: (np.ndarray [Number of eigenvalues, number of kpoints])"""
         self.nkp = np.shape(kpoints)[0]
         sym = atoms.get_chemical_symbols()
         mol_id = atoms.get_array("mol-id")
-        sym = atoms.get_chemical_symbols()
-        mol_id = atoms.get_array("mol-id")
-        tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
+        tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),
+                                 kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         self.natoms = len(atoms)
-        """scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
-
-        client = Client(scheduler_file=scheduler_file)
-        futures = client.map(tb_fxn, np.arange(self.nkp)) #, count=count)
-        evals,evecs  = client.submit(self.reduce_energy, futures).result()"""
-        #serial
         evals = np.zeros((len(atoms),self.nkp))
-        evecs = np.zeros((len(atoms),len(atoms),self.nkp),dtype=np.complex64)
-        for i in range(self.nkp):
-            tmp_evals,tmp_evecs = tb_fxn(i)
-            evals[:,i] = np.squeeze(tmp_evals)
-            evecs[:,:,i] = np.squeeze(tmp_evecs)
-        
+        #evecs = np.zeros((len(atoms),len(atoms),self.nkp),dtype=np.complex64)
+        if self.parallel=="dask":
+            cluster = dask.distributed.LocalCluster()
+            client = dask.distributed.Client(cluster)
+
+            futures = client.map(tb_fxn, np.arange(self.nkp))
+            evals  = client.submit(self.reduce_bands, futures).result()
+            client.shutdown()
+        #serial
+        elif self.parallel=="serial":
+            results = []
+            start_time = time()
+            for i in range(self.nkp):
+                tmpeval = tb_fxn(i)
+                results.append((tmpeval))
+            evals = self.reduce_bands(results)
+            end_time = time()
+            print("time for tight binding = ",end_time - start_time)
         #joblib
-        """ncpu = joblib.cpu_count()
-        output = Parallel(n_jobs=4)(delayed(tb_fxn)(i) for i in range(self.nkp))
-        for i in range(self.nkp):
-            evals[:,i] = np.squeeze(output[i][0])
-            evecs[:,:,i] = np.squeeze(output[i][1])"""
-        return evals,evecs
+        elif self.parallel=="joblib":
+            ncpu = joblib.cpu_count()
+            output = Parallel(n_jobs=self.nkp)(delayed(tb_fxn)(i) for i in range(self.nkp))
+            for i in range(self.nkp):
+                evals[:,i] = np.squeeze(output[i][0])
+                #evecs[:,:,i] = np.squeeze(output[i][1])
+        return evals
 
     def calculate(self, atoms, properties=None,system_changes=all_changes):
         if properties is None:
@@ -292,6 +321,8 @@ class TEGT_Calc(Calculator):
             self.results['forces'] = tb_forces + Lammps_forces
             self.results['potential_energy'] = tb_Energy + Lammps_potential_energy
             self.results['energy'] = tb_Energy + Lammps_tot_energy
+            print("Potential Energy = ",(tb_Energy + Lammps_potential_energy)/len(atoms)," (eV/atom)")
+
             
         else:
             data_file = os.path.join(self.output,"tegt.data")
@@ -300,6 +331,9 @@ class TEGT_Calc(Calculator):
             self.results['forces'] = self.Lammps_forces
             self.results['potential_energy'] = self.Lammps_potential_energy
             self.results['energy'] = self.Lammps_tot_energy
+            print("Potential Energy = ",( self.Lammps_potential_energy)/len(atoms)," (eV/atom)")
+
+        ase.io.write(os.path.join(self.model_dict["output"],"restart.traj"),atoms)
 
     def run(self,atoms):
         self.calculate(atoms)
@@ -309,10 +343,10 @@ class TEGT_Calc(Calculator):
     
     ##########################################################################
     def create_model(self,input_dict):
-        """setup total energy model based on input dictionary parameters 
-        using mpi and latte will result in ase optimizer to be used, 
+        """setup total energy model based on input dictionary parameters
+        using mpi and latte will result in ase optimizer to be used,
         else lammps runs relaxation """
-        
+
         model_dict={"tight binding parameters":None,
              "basis":None,
              "intralayer potential":None,
@@ -320,11 +354,11 @@ class TEGT_Calc(Calculator):
              "kmesh":(1,1,1),
              "parallel":"joblib",
              "output":".",
-             } 
+             }
         orbs_basis = {"s,px,py,pz":4,"pz":1}
         for k in input_dict.keys():
             model_dict[k] = input_dict[k]
-        
+
         self.model_dict = model_dict
         self.kpoints = self.k_uniform_mesh(self.model_dict['kmesh'])
         self.nkp = np.shape(self.kpoints)[0]
@@ -335,7 +369,6 @@ class TEGT_Calc(Calculator):
         else:
             use_tb=True
         self.use_tb = use_tb
-
         if self.model_dict["intralayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
             if os.path.exists(self.model_dict["intralayer potential"]):

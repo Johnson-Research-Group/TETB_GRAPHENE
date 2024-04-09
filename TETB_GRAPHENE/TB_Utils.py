@@ -1,15 +1,6 @@
-use_cupy=False
-if use_cupy:
-    #import autograd.cupy as lp  # Thinly-wrapped numpy
-    from autograd import jacobian
-    #from cupyx.scipy.spatial.distance import cdist
-else:
-    import autograd.numpy as lp  # Thinly-wrapped numpy
-    from autograd import jacobian
-    
 from scipy.spatial.distance import cdist
 import numpy as np
-from TEGT_CPU.TB_parameters import *
+from TETB_GRAPHENE.TB_parameters import *
 #from TB_parameters import *
 import matplotlib.pyplot as plt
 import glob
@@ -37,12 +28,19 @@ models_cutoff_intralayer={'letb':10,
 
 def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
-    Returns a pythtb model object for a given ASE atomic configuration 
-    Input:
-        ase_atoms - ASE object for the periodic system
-        model_type - 'letb' or 'mk'
-    Output:
-        gra - PythTB model describing hoppings between atoms using model_type        
+    builds a hamiltonian and overlap matrix using distance dependent tight binding parameters
+
+    :params atom_positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+    :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+    :params cell: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+    :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
+
+    :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
+
+    :returns: tuple(np.ndarray [Norbs,Norbs], np.ndarray [Norbs,Norbs]) Hamiltonian, Overlap        
     """
     
     conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
@@ -100,127 +98,24 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
 
     return Ham, Overlap
 
-def gen_ham_ovrlp_ref(atom_positions, layer_types, cell, kpoint, model_type):
-    """
-    Returns a pythtb model object for a given ASE atomic configuration 
-    Input:
-        ase_atoms - ASE object for the periodic system
-        model_type - 'letb' or 'mk'
-    Output:
-        gra - PythTB model describing hoppings between atoms using model_type        
-    """
-    
-    conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
-    lattice_vectors = lp.asarray(cell)*conversion
-    atomic_basis = lp.asarray(atom_positions)*conversion
-    kpoint = lp.asarray(kpoint)/conversion
-
-    layer_types = lp.asarray(layer_types)
-    layer_type_set = set(layer_types)
-
-    natom = len(atomic_basis)
-    
-    #Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
-    Ham = lp.zeros((natom,natom),dtype=lp.complex64)
-    Overlap = lp.eye(natom,dtype = lp.complex64)
-    for indi in range(natom):
-        for indj in range(natom):
-            if indj<=indi:
-                continue
-
-            if layer_types[indi]==layer_types[indj]:
-                hopping_model = porezag_hopping #models_functions_intralayer[model_type["intralayer"]]
-                overlap_model = porezag_overlap
-                cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
-            else:
-                hopping_model = popov_hopping #models_functions_interlayer[model_type["interlayer"]]
-                overlap_model = popov_overlap
-                cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-
-            min_dist = 100
-            n=0
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    for dz in [-1,0,1]:
-                        ind_R_ = dx*lattice_vectors[0,:] + dy*lattice_vectors[1,:] + dz*lattice_vectors[2,:]
-                        rv = -atomic_basis[indi,:]+atomic_basis[indj,:]+ind_R_
-                        if np.linalg.norm(rv)<min_dist:
-                            disp = rv
-                            min_dist = np.linalg.norm(rv)
-            if np.linalg.norm(disp)>cutoff:
-                continue
-            phases = lp.exp((1.0j)*lp.dot(kpoint,disp))
-            hoppings = np.squeeze(hopping_model([disp])) * phases  
-            overlap_elem = np.squeeze(overlap_model([disp])) * phases
-            Overlap[indi,indj] =   overlap_elem 
-            Overlap[indj,indi] =  lp.conj(overlap_elem) 
-            Ham[indi,indj] = hoppings 
-            Ham[indj,indi] = lp.conj(hoppings)
-    return Ham,Overlap
-
-def get_helem(lattice_vectors, hopping_model,indi, indj, di, dj):
-    conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
-    lattice_vectors = lp.array(lattice_vectors)*conversion
-    def fxn(pos):
-        pos = pos*conversion
-        hopping = hopping_model(lattice_vectors, pos,indi, indj, di, dj)
-        return hopping
-    return fxn
-
-def get_hellman_feynman_autograd(atomic_basis, layer_types, lattice_vectors, eigvals,eigvec, model_type,kpoint):
-    #construct density matrix
-    natoms = len(layer_types)
-    conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
-    nocc = natoms//2
-    fd_dist = 2*lp.eye(natoms)
-    fd_dist[nocc:,nocc:] = 0
-    density_matrix =  lp.conj(eigvec) @ fd_dist  @ eigvec.T
-
-    Forces = lp.zeros((natoms,3))
-    layer_type_set = set(layer_types)
-
-    diFull = []
-    djFull = []
-    extended_coords = []
-    for dx in [-1, 0, 1]:
-        for dy in [-1, 0, 1]:
-            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, lp.newaxis] * dx + lattice_vectors[1, lp.newaxis] * dy)
-            diFull += [dx] * natoms
-            djFull += [dy] * natoms
-    distances = cdist(atomic_basis, extended_coords)
-
-    gradH = lp.zeros((len(diFull),natoms,3))
-    for i_int,i_type in enumerate(layer_type_set):
-        for j_int,j_type in enumerate(layer_type_set):
-
-            if i_type==j_type:
-                hopping_model = models_functions_intralayer[model_type["intralayer"]]
-                cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
-            else:
-                hopping_model = models_functions_interlayer[model_type["interlayer"]]
-                cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-
-            indi, indj = lp.where((distances > 0.1) & (distances < cutoff))
-            di = lp.array(diFull)[indj]
-            dj = lp.array(djFull)[indj]
-            i  = lp.array(indi)
-            j  = lp.array(indj % natoms)
-            valid_indices = layer_types[i] == i_type
-            valid_indices &= layer_types[j] == j_type
-            disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
-                                           i[valid_indices], j[valid_indices])
-            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
-    
-            helem_fxn = get_helem(lattice_vectors, hopping_model,i[valid_indices], 
-                                  j[valid_indices], di[valid_indices], dj[valid_indices])
-            gradH_fxn = jacobian(helem_fxn)
-            gradH_tmp = gradH_fxn(atomic_basis)
-            rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis,lp.newaxis]
-            Forces += -lp.sum(lp.nan_to_num(gradH_tmp)*phases[:,lp.newaxis,lp.newaxis]*rho,axis=0).real
-
-    return Forces
-
 def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigvec, model_type,kpoint):
+    """Calculate Hellman-feynman forces for a given system. Uses finite differences to calculate matrix elements derivatives 
+    
+    :params atomic_basis: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+    :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+    :params lattice_vectors: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+    :params eigvals: (np.ndarray [natoms,]) band structure eigenvalues of system
+
+    :params eigvec: (np.ndarray [natoms,natoms]) eigenvectors of system
+
+    :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
+
+    :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
+
+    :returns: (np.ndarray [natoms,3]) tight binding forces on each atom"""
     #get hellman_feynman forces at single kpoint. 
     #dE/dR_i =  - Tr_i(rho_e *dS/dR_i + rho * dH/dR_i)
     #construct density matrix
@@ -314,86 +209,22 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
                     Forces[atom_ind,:] -=   lp.sum(ave_gradS,axis=0).real
     return Forces * conversion
 
-def get_hellman_feynman_interlayer(atomic_basis, layer_types, lattice_vectors, eigvals,eigvec, model_type,kpoint):
-    natoms = len(layer_types)
-    conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
-    lattice_vectors = lp.array(lattice_vectors)*conversion
-    atomic_basis = atomic_basis*conversion
-    nocc = natoms//2
-    fd_dist = 2*lp.eye(natoms)
-    fd_dist[nocc:,nocc:] = 0
-    density_matrix =  lp.conj(eigvec) @ fd_dist  @ eigvec.T
-    occupied_eigvals =  2*np.diag(eigvals)
-    occupied_eigvals[nocc:,nocc:] = 0
-
-    interlayer_Force = 0
-    layer_type_set = set(layer_types)
-
-    diFull = []
-    djFull = []
-    extended_coords = []
-    for dx in [-1, 0, 1]:
-        for dy in [-1, 0, 1]:
-            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, lp.newaxis] * dx + lattice_vectors[1, lp.newaxis] * dy)
-            diFull += [dx] * natoms
-            djFull += [dy] * natoms
-    distances = cdist(atomic_basis, extended_coords)
-
-    gradH = lp.zeros((len(diFull),natoms,3))
-    for i_int,i_type in enumerate(layer_type_set):
-        for j_int,j_type in enumerate(layer_type_set):
-
-            if i_type==j_type:
-                continue
-            else:
-                #if model_type["intralayer"] != "popov":
-                #    print("analytical gradients only implemented for popov parameters, use autograd instead")
-                    #exit()
-                hopping_model_grad = popov_hopping_grad
-                overlap_model_grad = popov_overlap_grad
-                hopping_model = popov_hopping
-                overlap_model= popov_overlap
-                #hopping_model = models_functions_interlayer[model_type["interlayer"]]
-                cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-
-            indi, indj = lp.where((distances > 0.1) & (distances < cutoff))
-            di = lp.array(diFull)[indj]
-            dj = lp.array(djFull)[indj]
-            i  = lp.array(indi)
-            j  = lp.array(indj % natoms)
-            valid_indices = layer_types[i] == i_type
-            valid_indices &= layer_types[j] == j_type
-            disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
-                                           i[valid_indices], j[valid_indices])
-            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
-            #grad_hop = hopping_model_grad(disp)
-            grad_hop = np.zeros_like(disp)
-            grad_overlap = np.zeros_like(disp)
-            for dir_ind in range(3):
-                dr = np.zeros(3)
-                dr[dir_ind] +=  1e-3
-                hop_up = hopping_model(disp+dr[np.newaxis,:])
-                hop_dwn = hopping_model(disp-dr[np.newaxis,:])
-                grad_hop[:,dir_ind] = (hop_up - hop_dwn)/2/1e-3
-
-                overlap_up = overlap_model(disp+dr[np.newaxis,:])
-                overlap_dwn = overlap_model(disp-dr[np.newaxis,:])
-
-                grad_overlap[:,dir_ind] = (overlap_up - overlap_dwn)/2/1e-3 
-
-            grad_hop[:,:2] = 0
-            grad_overlap[:,:2] = 0
-            rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis] 
-            
-            gradH = grad_hop * phases[:,lp.newaxis] * rho
-            Pulay =  grad_overlap * phases[:,lp.newaxis] * 2 * np.sum(eigvals[:nocc])
-            #for atom_ind in range(natoms):
-            #    use_ind = np.squeeze(np.where(i[valid_indices]==atom_ind))
-            #    Pulay[use_ind] *= occupied_eigvals[i[valid_indices][use_ind]][:,lp.newaxis]
-            interlayer_Force = lp.sum(gradH.real) #+ lp.sum(Pulay.real)
-    return interlayer_Force/natoms * conversion
-
 def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type,kpoint):
+    """Calculate Hellman-feynman forces for a given system. Uses finite differences to calculate matrix elements derivatives 
+    
+    :params atomic_basis: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+    :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+    :params lattice_vectors: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+    :params eigvec: (np.ndarray [natoms,natoms]) eigenvectors of system
+
+    :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
+
+    :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
+
+    :returns: (np.ndarray [natoms,3]) tight binding forces on each atom"""
     dr = 1e-3
     natoms, _ = atom_positions.shape
     nocc = natoms // 2

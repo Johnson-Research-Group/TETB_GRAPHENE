@@ -1,13 +1,4 @@
-use_cupy=False
-if use_cupy:
-    #import autograd.cupy as lp  # Thinly-wrapped numpy
-    from autograd import grad
-    #from cupyx.scipy.spatial.distance import cdist
-else:
-    import autograd.numpy as lp  # Thinly-wrapped numpy
-    from autograd import grad
-    from scipy.spatial.distance import cdist
-
+from scipy.spatial.distance import cdist
 import numpy as np
 import h5py
 import pandas as pd
