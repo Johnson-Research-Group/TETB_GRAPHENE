@@ -1,12 +1,8 @@
 from cupyx.scipy.spatial.distance import cdist
 import cupy as cp
-#import numpy as cp
-#from scipy.spatial.distance import cdist
 import numpy as np
-#from numba import njit
 import matplotlib.pyplot as plt
-import TEGT_GPU.descriptors as descriptors
-#import descriptors
+import TETB_GRAPHENE_GPU.descriptors as descriptors
 
 
 #########################################################################################

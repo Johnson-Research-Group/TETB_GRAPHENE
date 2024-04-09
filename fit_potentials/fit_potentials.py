@@ -5,7 +5,7 @@ Created on Wed Sep 27 14:39:20 2023
 @author: danpa
 """
 
-from TEGT_GPU import TEGT_calc as TEGT_calc
+from TETB_GRAPHENE_GPU import TETB_GRAPHENE_calc
 import flatgraphene as fg
 import numpy as np
 import ase.io
@@ -283,7 +283,7 @@ if __name__ == '__main__':
                         'output':args.output})
     if args.gendata=="True" and args.type=="interlayer":
    
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
 
         print("assembling interlayer database")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
@@ -298,7 +298,7 @@ if __name__ == '__main__':
             db.write(atoms,data={"total_energy":row["energy"],'tb_energy':tb_energy/len(atoms)})
 
     if args.type=="interlayer" and args.fit=="True":
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
         print("fitting interlayer potential")
         db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
         E0 = -154
@@ -311,7 +311,7 @@ if __name__ == '__main__':
         print(pfinal.x)
 
     if args.gendata=="True" and args.type=="intralayer":
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
         print("assembling intralayer database")
         subprocess.call('rm ../data/monolayer_nkp'+nkp+'.db',shell=True)
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
@@ -383,7 +383,7 @@ if __name__ == '__main__':
                            'output':args.output+"lat_con_test"
                           })
         
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
 
 
         #get rid of configurations outside of applicability region
@@ -446,7 +446,7 @@ if __name__ == '__main__':
 
 
     if args.type=="intralayer" and args.fit=="True":
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
         print("fitting intralayer potential")
         db = ase.db.connect('../data/monolayer_nkp'+nkp+'.db')
         E0 = 0
@@ -470,7 +470,7 @@ if __name__ == '__main__':
         #model_dict["interlayer potential"] = interlayer_pot
         #interlayer_pot = glob.glob(os.path.join(args.output,"CC_QMC.KC"),recursive=True)[0]
         #model_dict["interlayer potential"] = interlayer_pot
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
 
         stacking_ = ["AB","SP","Mid","AA"]
         disreg_ = [0 , 0.16667, 0.5, 0.66667]
@@ -565,7 +565,7 @@ if __name__ == '__main__':
         #model_dict["intralayer potential"] = intralayer_pot
         #interlayer_pot = glob.glob(os.path.join(args.output,"*KC_insp*"),recursive=True)[0]
         #model_dict["interlayer potential"] = interlayer_pot
-        calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
 
         model_dict = dict({"tight binding parameters":None,
                            "basis":"pz",
@@ -573,7 +573,7 @@ if __name__ == '__main__':
                            "interlayer potential":"kolmogorov crespi",
                            'output':args.output +"classical"
                           })
-        calc_obj_classical = TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj_classical = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
         # 'Q_CC' ,'alpha_CC', 'A_CC'
         #'BIJc_CC1', 'BIJc_CC2','BIJc_CC3',
         #'Beta_CC1', 'Beta_CC2', 'Beta_CC3
@@ -594,7 +594,7 @@ if __name__ == '__main__':
                           "interlayer potential":"Pz KC inspired",
                           'output':args.output +"lat_con_test"
                           })
-            calc_obj = TEGT_calc.TEGT_Calc(model_dict)
+            calc_obj = TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
             # 'Q_CC' ,'alpha_CC', 'A_CC'
             #'BIJc_CC1', 'BIJc_CC2','BIJc_CC3', 
             #'Beta_CC1', 'Beta_CC2', 'Beta_CC3'

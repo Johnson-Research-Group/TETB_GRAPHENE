@@ -15,8 +15,7 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
-import TEGT_GPU.TEGT_calc
-import TEGT_CPU.TEGT_calc
+import TETB_GRAPHENE_GPU.TEGT_calc
 
 def get_atom_pairs(n,a):
     L=n*a+10
@@ -138,7 +137,7 @@ if __name__=="__main__":
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
     
-    calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+    calc_obj = TETB_GRAPHENE_GPU.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
     csfont = {'fontname':'serif',"size":20} 
     if test_tbforces:
         #test forces pairwise

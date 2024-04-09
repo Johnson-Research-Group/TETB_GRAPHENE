@@ -3,11 +3,10 @@
 import cupy as cp
 from cupyx.scipy.spatial.distance import cdist
 import numpy as np
-from TEGT_GPU.TB_parameters import *
+from TETB_GRAPHENE_GPU.TB_parameters import *
 #from TB_parameters import *
 import matplotlib.pyplot as plt
 import glob
-import scipy.linalg as spla
 
 models_functions_interlayer = {'letb':letb_interlayer,
                                     'mk':mk,
@@ -39,6 +38,7 @@ def get_unique_set(array):
     return cp.array(unique_set)
 
 def generalized_eigen(A,B):
+    """generalized eigen value solver using cupy. equivalent to scipy.linalg.eigh(A,B=B) """
     Binv = cp.linalg.inv(B)
     renorm_A  = Binv @ A
     eigvals,eigvecs = cp.linalg.eigh(renorm_A)
@@ -47,18 +47,24 @@ def generalized_eigen(A,B):
     U = cp.linalg.cholesky(cp.linalg.inv(Q))
     eigvecs = eigvecs @ U
     eigvals = cp.diag(eigvecs.conj().T @ A @ eigvecs).real
-    #print("GPU version ",np.round((eigvecs.conj().T @ B @ eigvecs).real,decimals=2))
 
     return eigvals,eigvecs
 
 def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
-    Returns a pythtb model object for a given ASE atomic configuration 
-    Input:
-        ase_atoms - ASE object for the periodic system
-        model_type - 'letb' or 'mk'
-    Output:
-        gra - PythTB model describing hoppings between atoms using model_type        
+    builds a hamiltonian and overlap matrix using distance dependent tight binding parameters
+
+    :params atom_positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+    :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+    :params cell: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+    :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
+
+    :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
+
+    :returns: tuple(np.ndarray [Norbs,Norbs], np.ndarray [Norbs,Norbs]) Hamiltonian, Overlap        
     """
     
     conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
@@ -116,6 +122,23 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     return Ham, Overlap
 
 def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigvec, model_type,kpoint):
+    """Calculate Hellman-feynman forces for a given system. Uses finite differences to calculate matrix elements derivatives 
+    
+    :params atomic_basis: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+    :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+    :params lattice_vectors: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+    :params eigvals: (np.ndarray [natoms,]) band structure eigenvalues of system
+
+    :params eigvec: (np.ndarray [natoms,natoms]) eigenvectors of system
+
+    :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
+
+    :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
+
+    :returns: (np.ndarray [natoms,3]) tight binding forces on each atom"""
     #get hellman_feynman forces at single kpoint. 
     #dE/dR_i =  - Tr_i(rho_e *dS/dR_i + rho * dH/dR_i)
     #construct density matrix
@@ -212,6 +235,21 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     return Forces * conversion
 
 def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type,kpoint):
+    """Calculate Hellman-feynman forces for a given system. Uses finite differences to calculate matrix elements derivatives 
+    
+    :params atomic_basis: (np.ndarray [Natoms,3]) positions of atoms in angstroms
+
+    :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
+
+    :params lattice_vectors: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
+
+    :params eigvec: (np.ndarray [natoms,natoms]) eigenvectors of system
+
+    :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
+
+    :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
+
+    :returns: (np.ndarray [natoms,3]) tight binding forces on each atom"""
     dr = 1e-3
    
     natoms, _ = atom_positions.shape
