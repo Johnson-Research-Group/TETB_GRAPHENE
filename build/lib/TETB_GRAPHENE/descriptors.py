@@ -13,22 +13,22 @@ def nnmat(lattice_vectors, atomic_basis):
 
     Returns: nnmat [natom x 3 x 3]
     """
-    nnmat = np.zeros((len(atomic_basis), 3, 3))
+    nnmat = lp.zeros((len(atomic_basis), 3, 3))
 
     # Extend atom list
     atoms = []
     for i in [0, -1, 1]:
         for j in [0, -1, 1]:
-            displaced_atoms = atomic_basis + lattice_vectors[np.newaxis, 0] * i + lattice_vectors[np.newaxis, 1] * j
+            displaced_atoms = atomic_basis + lattice_vectors[lp.newaxis, 0] * i + lattice_vectors[lp.newaxis, 1] * j
             atoms += [list(x) for x in displaced_atoms]
-    atoms = np.array(atoms)
-    atomic_basis = np.array(atomic_basis)
+    atoms = lp.array(atoms)
+    atomic_basis = lp.array(atomic_basis)
 
     # Loop
     for i in range(len(atomic_basis)):
         displacements = atoms - atomic_basis[i]
-        distances = np.linalg.norm(displacements,axis=1)
-        ind = np.argsort(distances)
+        distances = lp.linalg.norm(displacements,axis=1)
+        ind = lp.argsort(distances)
         nnmat[i] = displacements[ind[1:4]]
 
     return nnmat
@@ -42,15 +42,15 @@ def ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj):
     dz  - Distance in Bohr, projected onto the z axis
     """
 
-    displacement_vector = di[:, np.newaxis] * lattice_vectors[0] +\
-                          dj[:, np.newaxis] * lattice_vectors[1] +\
+    displacement_vector = di[:, lp.newaxis] * lattice_vectors[0] +\
+                          dj[:, lp.newaxis] * lattice_vectors[1] +\
                           atomic_basis[aj] - atomic_basis[ai]
 
     displacement_vector_xy = displacement_vector[:, :2] 
     displacement_vector_z =  displacement_vector[:, -1] 
 
-    dxy = np.linalg.norm(displacement_vector_xy, axis = 1)
-    dz = np.abs(displacement_vector_z)
+    dxy = lp.linalg.norm(displacement_vector_xy, axis = 1)
+    dz = lp.abs(displacement_vector_z)
     return dxy, dz
 #@njit
 def ix_to_disp(lattice_vectors, atomic_basis, di, dj, ai, aj):
@@ -61,8 +61,8 @@ def ix_to_disp(lattice_vectors, atomic_basis, di, dj, ai, aj):
     dxy - Distance in Bohr, projected in the x/y plane
     dz  - Distance in Bohr, projected onto the z axis
     """
-    displacement_vector = di[:, np.newaxis] * lattice_vectors[0] +\
-                          dj[:, np.newaxis] * lattice_vectors[1] +\
+    displacement_vector = di[:, lp.newaxis] * lattice_vectors[0] +\
+                          dj[:, lp.newaxis] * lattice_vectors[1] +\
                           atomic_basis[aj] - atomic_basis[ai]
     return displacement_vector
 #@njit
@@ -73,14 +73,14 @@ def partition_tb(lattice_vectors, atomic_basis, di, dj, ai, aj):
     """
     # First find the smallest distance in the lattice -> reference for NN 
     distances = ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj)
-    distances = np.sqrt(distances[0]**2 + distances[1]**2)
+    distances = lp.sqrt(distances[0]**2 + distances[1]**2)
     min_distance = min(distances)
 
     # NN should be within 5% of min_distance
     t01_ix = (distances >= 0.95 * min_distance) & (distances <= 1.05 * min_distance)
 
     # NNN should be withing 5% of sqrt(3)x of min_distance
-    t02_ix = (distances >= 0.95 * np.sqrt(3) * min_distance) & (distances <= 1.05 * np.sqrt(3) * min_distance)
+    t02_ix = (distances >= 0.95 * lp.sqrt(3) * min_distance) & (distances <= 1.05 * lp.sqrt(3) * min_distance)
 
     # NNNN should be within 5% of 2x of min_distance
     t03_ix = (distances >= 0.95 * 2 * min_distance) & (distances <= 1.05 * 2 * min_distance)
@@ -94,27 +94,27 @@ def triangle_height(a, base):
     """
     Give area of a triangle given two displacement vectors for 2 sides
     """
-    area = np.linalg.det(
-            np.array([a, base, [1, 1, 1]])
+    area = lp.linalg.det(
+            lp.array([a, base, [1, 1, 1]])
     )
-    area = np.abs(area)/2
-    height = 2 * area / np.linalg.norm(base)
+    area = lp.abs(area)/2
+    height = 2 * area / lp.linalg.norm(base)
     return height
 #@njit
 def t01_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     # Compute NN distances
-    r = di[:, np.newaxis] * lattice_vectors[0] + dj[:, np.newaxis] * lattice_vectors[1] +\
+    r = di[:, lp.newaxis] * lattice_vectors[0] + dj[:, lp.newaxis] * lattice_vectors[1] +\
         atomic_basis[aj] - atomic_basis[ai] # Relative coordinates
     #r[:, -1] = 0 # Project into xy-plane
-    a = np.linalg.norm(r, axis = 1)
+    a = lp.linalg.norm(r, axis = 1)
     return pd.DataFrame({'a': a})
 #@njit
 def t02_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     # Compute NNN distances
-    r = di[:, np.newaxis] * lattice_vectors[0] + dj[:, np.newaxis] * lattice_vectors[1] +\
+    r = di[:, lp.newaxis] * lattice_vectors[0] + dj[:, lp.newaxis] * lattice_vectors[1] +\
         atomic_basis[aj] - atomic_basis[ai] # Relative coordinates
     #r[:, -1] = 0 # Project into xy-plane
-    b = np.linalg.norm(r, axis = 1)
+    b = lp.linalg.norm(r, axis = 1)
 
     # Compute h
     h1 = []
@@ -123,8 +123,8 @@ def t02_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     for i in range(len(r)):
         nn = mat[aj[i]] + r[i]
         nn[:, -1] = 0 # Project into xy-plane
-        nndist = np.linalg.norm(nn, axis = 1)
-        ind = np.argsort(nndist)
+        nndist = lp.linalg.norm(nn, axis = 1)
+        ind = lp.argsort(nndist)
         h1.append(triangle_height(nn[ind[0]], r[i]))
         h2.append(triangle_height(nn[ind[1]], r[i]))
     return pd.DataFrame({'h1': h1, 'h2': h2, 'b': b})
@@ -134,9 +134,9 @@ def t03_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     Compute t03 descriptors
     """
     # Compute NNNN distances
-    r = di[:, np.newaxis] * lattice_vectors[0] + dj[:, np.newaxis] * lattice_vectors[1] +\
+    r = di[:, lp.newaxis] * lattice_vectors[0] + dj[:, lp.newaxis] * lattice_vectors[1] +\
         atomic_basis[aj] - atomic_basis[ai] # Relative coordinates
-    c = np.linalg.norm(r, axis = 1)
+    c = lp.linalg.norm(r, axis = 1)
     #r[:, -1] = 0 # Project into xy-plane
 
     # All other hexagon descriptors
@@ -146,8 +146,8 @@ def t03_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
     for i in range(len(r)):
         nn = mat[aj[i]] + r[i]
         nn[:, -1] = 0 # Project into xy-plane
-        nndist = np.linalg.norm(nn, axis = 1)
-        ind = np.argsort(nndist)
+        nndist = lp.linalg.norm(nn, axis = 1)
+        ind = lp.argsort(nndist)
         b = nndist[ind[0]]
         d = nndist[ind[1]]
         h3 = triangle_height(nn[ind[0]], r[i])
@@ -155,8 +155,8 @@ def t03_descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
 
         nn = r[i] - mat[ai[i]]
         nn[:, -1] = 0 # Project into xy-plane
-        nndist = np.linalg.norm(nn, axis = 1)
-        ind = np.argsort(nndist)
+        nndist = lp.linalg.norm(nn, axis = 1)
+        ind = lp.argsort(nndist)
         a = nndist[ind[0]]
         e = nndist[ind[1]]
         h1 = triangle_height(nn[ind[0]], r[i])
@@ -192,8 +192,8 @@ def ix_to_orientation(lattice_vectors, atomic_basis, di, dj, ai, aj):
     theta_12 - Orientation of upper-layer relative to bond length
     theta_21 - Orientation of lower-layer relative to bond length
     """
-    displacement_vector = di[:, np.newaxis] * lattice_vectors[0] +\
-                          dj[:, np.newaxis] * lattice_vectors[1] +\
+    displacement_vector = di[:, lp.newaxis] * lattice_vectors[0] +\
+                          dj[:, lp.newaxis] * lattice_vectors[1] +\
                           atomic_basis[aj] - atomic_basis[ai]
     mat = nnmat(lattice_vectors, atomic_basis)
 
@@ -201,14 +201,14 @@ def ix_to_orientation(lattice_vectors, atomic_basis, di, dj, ai, aj):
     theta_12 = []
     theta_21 = []
     for disp, i, j, inn, jnn in zip(displacement_vector, ai, aj, mat[ai], mat[aj]):
-        sin_jnn = np.cross(jnn[:,:2], disp[:2]) 
-        sin_inn = np.cross(inn[:,:2], disp[:2]) 
-        cos_jnn = np.dot(jnn[:,:2], disp[:2]) 
-        cos_inn = np.dot(inn[:,:2], disp[:2]) 
-        theta_jnn = np.arctan2(sin_jnn, cos_jnn)
-        theta_inn = np.arctan2(sin_inn, cos_inn)
+        sin_jnn = lp.cross(jnn[:,:2], disp[:2]) 
+        sin_inn = lp.cross(inn[:,:2], disp[:2]) 
+        cos_jnn = lp.dot(jnn[:,:2], disp[:2]) 
+        cos_inn = lp.dot(inn[:,:2], disp[:2]) 
+        theta_jnn = lp.arctan2(sin_jnn, cos_jnn)
+        theta_inn = lp.arctan2(sin_inn, cos_inn)
 
-        theta_12.append(np.pi - theta_jnn[0])
+        theta_12.append(lp.pi - theta_jnn[0])
         theta_21.append(theta_inn[0])
     return theta_12, theta_21
 #@njit
@@ -231,7 +231,7 @@ def descriptors(lattice_vectors, atomic_basis, di, dj, ai, aj):
 
     # 1-body terms
     dist_xy, dist_z = ix_to_dist(lattice_vectors, atomic_basis, di, dj, ai, aj)
-    dist = np.sqrt(dist_z ** 2 + dist_xy ** 2)
+    dist = lp.sqrt(dist_z ** 2 + dist_xy ** 2)
     output['dxy'] = list(dist_xy)
     output['dz'] = list(dist_z)
     output['d'] = list(dist)
