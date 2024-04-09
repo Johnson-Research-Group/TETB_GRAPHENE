@@ -1,1 +1,1 @@
-TEGT_GPU
+TEGT_CPU
