@@ -26,7 +26,7 @@ models_cutoff_intralayer={'letb':10,
                         'porezag':3.7,
                         "nn":4.4}
 
-def gen_ham_ovrlp.atom_positions, layer_types, cell, kpoint, model_type):
+def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
     builds a hamiltonian and overlap matrix using distance dependent tight binding parameters
 
@@ -233,13 +233,13 @@ def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type
         for i in range(natoms):
             atom_positions_pert = np.copy(atom_positions)
             atom_positions_pert[i, dir_ind] += dr
-            Ham,Overlap = gen_ham_ovrlp.atom_positions_pert, layer_types, cell, kpoint, model_type)
+            Ham,Overlap = gen_ham_ovrlp(atom_positions_pert, layer_types, cell, kpoint, model_type)
             eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
             Energy_up = 2 * np.sum(eigvalues[:nocc])
             
             atom_positions_pert = np.copy(atom_positions)
             atom_positions_pert[i, dir_ind] -= dr
-            Ham,Overlap = gen_ham_ovrlp.atom_positions_pert, layer_types, cell, kpoint, model_type)
+            Ham,Overlap = gen_ham_ovrlp(atom_positions_pert, layer_types, cell, kpoint, model_type)
             eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
             Energy_dwn = 2 * np.sum(eigvalues[:nocc])
 
@@ -277,7 +277,7 @@ if __name__=="__main__":
     layer_types = atoms.get_chemical_symbols()
     kpoint = np.array([0,0,0])
     params_str = "mk" #"popov"
-    Ham,i,j, di, dj, phase = gen_ham_ovrlp.atom_positions, mol_id, cell, kpoint, params_str)
+    Ham,i,j, di, dj, phase = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoint, params_str)
     eigvals,eigvec = np.linalg.eigh(Ham)
     hf_forces = get_hellman_feynman(atom_positions, mol_id, cell, eigvec, params_str, i,j, di, dj, phase)
     print(hf_forces)

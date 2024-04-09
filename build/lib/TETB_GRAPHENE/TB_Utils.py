@@ -44,11 +44,11 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
     
     conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
-    lattice_vectors = lp.asarray(cell)*conversion
-    atomic_basis = lp.asarray(atom_positions)*conversion
-    kpoint = lp.asarray(kpoint)/conversion
+    lattice_vectors = np.asarray(cell)*conversion
+    atomic_basis = np.asarray(atom_positions)*conversion
+    kpoint = np.asarray(kpoint)/conversion
 
-    layer_types = lp.asarray(layer_types)
+    layer_types = np.asarray(layer_types)
     layer_type_set = set(layer_types)
 
     natom = len(atomic_basis)
@@ -57,13 +57,13 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     extended_coords = []
     for dx in [-1, 0, 1]:
         for dy in [-1, 0, 1]:
-            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, lp.newaxis] * dx + lattice_vectors[1, lp.newaxis] * dy)
+            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, np.newaxis] * dx + lattice_vectors[1, np.newaxis] * dy)
             diFull += [dx] * natom
             djFull += [dy] * natom
     distances = cdist(atomic_basis, extended_coords)
     
-    Ham = models_self_energy[model_type["interlayer"]]*lp.eye(natom,dtype=lp.complex64)
-    Overlap = np.eye(natom,dtype=lp.complex64)
+    Ham = models_self_energy[model_type["interlayer"]]*np.eye(natom,dtype=np.complex64)
+    Overlap = np.eye(natom,dtype=np.complex64)
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
             if i_type==j_type:
@@ -75,26 +75,26 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
                 
                 overlap_model = popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-            i, j = lp.where((distances > 0.1)  & (distances < cutoff))
-            di = lp.array(diFull)[j]
-            dj = lp.array(djFull)[j]
-            i  = lp.array(i)
-            j  = lp.array(j % natom)
+            i, j = np.where((distances > 0.1)  & (distances < cutoff))
+            di = np.array(diFull)[j]
+            dj = np.array(djFull)[j]
+            i  = np.array(i)
+            j  = np.array(j % natom)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
             valid_indices &= i!=j
 
             disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
                                            i[valid_indices], j[valid_indices])
-            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
+            phases = np.exp((1.0j)*np.dot(kpoint,disp.T))
 
             hoppings = hopping_model(lattice_vectors, atomic_basis,i[valid_indices], 
                                   j[valid_indices], di[valid_indices], dj[valid_indices])/2  # Divide by 2 since we are double counting every pair
             overlap_elem = overlap_model(disp)/2
             Ham[i[valid_indices],j[valid_indices]] += hoppings * phases
-            Ham[j[valid_indices],i[valid_indices]] += lp.conj(hoppings*phases)
+            Ham[j[valid_indices],i[valid_indices]] += np.conj(hoppings*phases)
             Overlap[i[valid_indices],j[valid_indices]] +=   overlap_elem  * phases
-            Overlap[j[valid_indices],i[valid_indices]] +=  lp.conj(overlap_elem * phases) 
+            Overlap[j[valid_indices],i[valid_indices]] +=  np.conj(overlap_elem * phases) 
 
     return Ham, Overlap
 
@@ -121,18 +121,18 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     #construct density matrix
     natoms = len(layer_types)
     conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
-    lattice_vectors = lp.array(lattice_vectors)*conversion
+    lattice_vectors = np.array(lattice_vectors)*conversion
     atomic_basis = atomic_basis*conversion
     nocc = natoms//2
-    fd_dist = 2*lp.eye(natoms)
+    fd_dist = 2*np.eye(natoms)
     fd_dist[nocc:,nocc:] = 0
     occ_eigvals = 2*np.diag(eigvals)
     occ_eigvals[nocc:,nocc:] = 0
-    density_matrix =  eigvec @ fd_dist  @ lp.conj(eigvec).T
-    energy_density_matrix = eigvec @ occ_eigvals @ lp.conj(eigvec).T
+    density_matrix =  eigvec @ fd_dist  @ np.conj(eigvec).T
+    energy_density_matrix = eigvec @ occ_eigvals @ np.conj(eigvec).T
     tot_eng = 2 * np.sum(eigvals[:nocc])
 
-    Forces = lp.zeros((natoms,3))
+    Forces = np.zeros((natoms,3))
     layer_type_set = set(layer_types)
 
     diFull = []
@@ -140,12 +140,12 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     extended_coords = []
     for dx in [-1, 0, 1]:
         for dy in [-1, 0, 1]:
-            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, lp.newaxis] * dx + lattice_vectors[1, lp.newaxis] * dy)
+            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, np.newaxis] * dx + lattice_vectors[1, np.newaxis] * dy)
             diFull += [dx] * natoms
             djFull += [dy] * natoms
     distances = cdist(atomic_basis, extended_coords)
 
-    gradH = lp.zeros((len(diFull),natoms,3))
+    gradH = np.zeros((len(diFull),natoms,3))
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
 
@@ -162,16 +162,16 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
                 overlap_model = popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
 
-            indi, indj = lp.where((distances > 0.1) & (distances < cutoff))
-            di = lp.array(diFull)[indj]
-            dj = lp.array(djFull)[indj]
-            i  = lp.array(indi)
-            j  = lp.array(indj % natoms)
+            indi, indj = np.where((distances > 0.1) & (distances < cutoff))
+            di = np.array(diFull)[indj]
+            dj = np.array(djFull)[indj]
+            i  = np.array(indi)
+            j  = np.array(indj % natoms)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
             disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
                                            i[valid_indices], j[valid_indices])
-            phases = lp.exp((1.0j)*lp.dot(kpoint,disp.T))
+            phases = np.exp((1.0j)*np.dot(kpoint,disp.T))
 
             #check gradients of hoppings via finite difference
             grad_hop = np.zeros_like(disp)
@@ -190,12 +190,12 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
 
                 grad_overlap[:,dir_ind] = (overlap_up - overlap_dwn)/2/delta
 
-            rho =  density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis] 
-            energy_rho = energy_density_matrix[i[valid_indices],j[valid_indices]][:,lp.newaxis]
-            gradH = grad_hop * phases[:,lp.newaxis] * rho
-            gradH += lp.conj(gradH)
-            Pulay =  grad_overlap * phases[:,lp.newaxis] * energy_rho
-            Pulay += lp.conj(Pulay)
+            rho =  density_matrix[i[valid_indices],j[valid_indices]][:,np.newaxis] 
+            energy_rho = energy_density_matrix[i[valid_indices],j[valid_indices]][:,np.newaxis]
+            gradH = grad_hop * phases[:,np.newaxis] * rho
+            gradH += np.conj(gradH)
+            Pulay =  grad_overlap * phases[:,np.newaxis] * energy_rho
+            Pulay += np.conj(Pulay)
 
             for atom_ind in range(natoms):
                 use_ind = np.squeeze(np.where(i[valid_indices]==atom_ind))
@@ -205,8 +205,8 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
                     Forces[atom_ind,:] -= -ave_gradH.real 
                     Forces[atom_ind,:] -=   ave_gradS.real
                 else:
-                    Forces[atom_ind,:] -= -lp.sum(ave_gradH,axis=0).real 
-                    Forces[atom_ind,:] -=   lp.sum(ave_gradS,axis=0).real
+                    Forces[atom_ind,:] -= -np.sum(ave_gradH,axis=0).real 
+                    Forces[atom_ind,:] -=   np.sum(ave_gradS,axis=0).real
     return Forces * conversion
 
 def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type,kpoint):
@@ -228,20 +228,20 @@ def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type
     dr = 1e-3
     natoms, _ = atom_positions.shape
     nocc = natoms // 2
-    Forces = lp.zeros((natoms, 3), dtype=lp.float64)
+    Forces = np.zeros((natoms, 3), dtype=np.float64)
     for dir_ind in range(3):
         for i in range(natoms):
-            atom_positions_pert = lp.copy(atom_positions)
+            atom_positions_pert = np.copy(atom_positions)
             atom_positions_pert[i, dir_ind] += dr
             Ham,Overlap = gen_ham_ovrlp(atom_positions_pert, layer_types, cell, kpoint, model_type)
             eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
-            Energy_up = 2 * lp.sum(eigvalues[:nocc])
+            Energy_up = 2 * np.sum(eigvalues[:nocc])
             
-            atom_positions_pert = lp.copy(atom_positions)
+            atom_positions_pert = np.copy(atom_positions)
             atom_positions_pert[i, dir_ind] -= dr
             Ham,Overlap = gen_ham_ovrlp(atom_positions_pert, layer_types, cell, kpoint, model_type)
             eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
-            Energy_dwn = 2 * lp.sum(eigvalues[:nocc])
+            Energy_dwn = 2 * np.sum(eigvalues[:nocc])
 
             Forces[i, dir_ind] = -(Energy_up - Energy_dwn) / (2 * dr)
 
@@ -254,12 +254,12 @@ if __name__=="__main__":
     def get_atom_pairs(n,a):
         L=n*a+10
         sym=""
-        pos=lp.zeros((int(2*n),3))
-        mol_id = lp.zeros(int(2*n))
+        pos=np.zeros((int(2*n),3))
+        mol_id = np.zeros(int(2*n))
         for i in range(n):
             sym+="BTi"
-            pos[i,:] = lp.array([0,0,0])
-            pos[i+n,:] = lp.array([0,0,(i+1)*a])
+            pos[i,:] = np.array([0,0,0])
+            pos[i+n,:] = np.array([0,0,(i+1)*a])
             mol_id[i] = 1
             mol_id[i+n]=2
         #'BBBBTiTiTiTi'(0,a,0),(a,2*a,0),(2*a,3*a,0),(3*a,4*a,0)
@@ -275,9 +275,9 @@ if __name__=="__main__":
     cell = atoms.get_cell()
     mol_id = atoms.get_array("mol-id")
     layer_types = atoms.get_chemical_symbols()
-    kpoint = lp.array([0,0,0])
+    kpoint = np.array([0,0,0])
     params_str = "mk" #"popov"
     Ham,i,j, di, dj, phase = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoint, params_str)
-    eigvals,eigvec = lp.linalg.eigh(Ham)
+    eigvals,eigvec = np.linalg.eigh(Ham)
     hf_forces = get_hellman_feynman(atom_positions, mol_id, cell, eigvec, params_str, i,j, di, dj, phase)
     print(hf_forces)

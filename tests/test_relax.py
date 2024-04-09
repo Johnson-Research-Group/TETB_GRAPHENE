@@ -121,8 +121,8 @@ if __name__=="__main__":
     test_tbforces=False
     test_tbenergy=False
     test_lammps=False
-    test_bands=False
-    test_relaxation=True
+    test_bands=True
+    test_relaxation=False
     test_scaling=False
     test_kpoints=False
     theta = 21.78
@@ -132,7 +132,7 @@ if __name__=="__main__":
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
                           "kmesh":(1,1,1),
-                          "parallel":"dask",
+                          "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -311,7 +311,7 @@ if __name__=="__main__":
     if test_bands:
         # srun -num tasks nkp -gpu's per task 1 python test_relax.py ideally
         #test band structure
-        theta=5.09 #21.78
+        theta=21.78
         atoms = get_twist_geom(theta,3.35)
         Gamma = [0,   0,   0]
         K = [2/3,1/3,0]
@@ -321,7 +321,7 @@ if __name__=="__main__":
         nk=60
         kdat = calc_obj.k_path(sym_pts,nk)
         kpoints = kdat[0]
-        evals,evecs = calc_obj.get_band_structure(atoms,kpoints)
+        evals = calc_obj.get_band_structure(atoms,kpoints)
         plot_bands(evals,kdat,erange=5,title=r'$\theta=$'+str(theta)+r'$^o$',figname="theta_"+str(theta)+".png")
         
     if test_relaxation:
