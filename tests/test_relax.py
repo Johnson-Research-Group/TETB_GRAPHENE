@@ -15,7 +15,7 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
-import TETB_GRAPHENE_GPU.TEGT_calc
+import TETB_GRAPHENE_GPU.TETB_GRAPHENE_calc
 
 def get_atom_pairs(n,a):
     L=n*a+10
@@ -285,7 +285,7 @@ if __name__=="__main__":
         tb_energy_k = np.zeros(len(nkps))
         for i,nkp in enumerate(nkps):
             model_dict["kmesh"] = (nkp,nkp,1)    
-            calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+            calc_obj = TETB_GRAPHENE_GPU.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
             tb_energy_k[i] = tb_energy/len(atoms)
         print(tb_energy_k)
@@ -339,7 +339,7 @@ if __name__=="__main__":
                           "interlayer potential":"Pz KC inspired",
                           'output':calc_folder})
 
-        calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
+        calc_obj = TETB_GRAPHENE_GPU.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
         #atoms = get_graphite(3.35)
         atoms.calc = calc_obj
         calc_folder = "theta_"+str(theta).replace(".","_")
