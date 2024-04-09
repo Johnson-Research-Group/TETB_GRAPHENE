@@ -2,7 +2,6 @@ from cupyx.scipy.spatial.distance import cdist
 import cupy as cp
 #import numpy as cp
 #from scipy.spatial.distance import cdist
-import numpy as np
 import h5py
 import pandas as pd
 import numpy as np

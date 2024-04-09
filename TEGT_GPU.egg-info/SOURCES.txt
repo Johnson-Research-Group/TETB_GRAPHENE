@@ -1,6 +1,7 @@
 MANIFEST.in
 setup.py
 TEGT_GPU/TB_Utils.py
+TEGT_GPU/TB_Utils_v2.py
 TEGT_GPU/TB_parameters.py
 TEGT_GPU/TEGT_TB.py
 TEGT_GPU/TEGT_calc.py

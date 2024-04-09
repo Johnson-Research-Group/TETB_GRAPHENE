@@ -47,9 +47,26 @@ def generalized_eigen(A,B):
     U = cp.linalg.cholesky(cp.linalg.inv(Q))
     eigvecs = eigvecs @ U
     eigvals = cp.diag(eigvecs.conj().T @ A @ eigvecs).real
-    #print("GPU version ",np.round((eigvecs.conj().T @ B @ eigvecs).real,decimals=2))
 
     return eigvals,eigvecs
+
+def wrap_disp(atomic_basis,lattice_vectors,cutoff):
+    natom = len(pos) 
+    distances = 1000 * cp.ones((natom,natom))
+    for dx in [-1, 0, 1]:
+        for dy in [-1, 0, 1]:
+            extended_coords = list(atomic_basis[:, :] + lattice_vectors[0, cp.newaxis] * dx + lattice_vectors[1, cp.newaxis] * dy)
+            diFull = [dx] * natom
+            djFull = [dy] * natom
+            tmp_distances = cdist(atomic_basis, extended_coords)
+            use_ind_i, use_ind_j = cp.where(tmp_distances < distances)
+            distances[use_ind_i,use_ind_j] = tmp_distances[use_ind_i,use_ind_j]
+            i, j = cp.where((distances > 0.1)  & (distances < cutoff))
+            di[use_j_ind] = cp.array(diFull)[j][use_j_ind]
+            dj[use_j_ind] = cp.array(djFull)[j][use_j_ind]
+            i  = cp.array(i)
+            j  = cp.array(j % natom)
+    return distances,i,j,di,dj
 
 def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
@@ -69,16 +86,8 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     layer_types = cp.asarray(layer_types)
     layer_type_set = get_unique_set(layer_types)
 
-    natom = len(atomic_basis)
-    diFull = []
-    djFull = []
-    extended_coords = []
-    for dx in [-1, 0, 1]:
-        for dy in [-1, 0, 1]:
-            extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, cp.newaxis] * dx + lattice_vectors[1, cp.newaxis] * dy)
-            diFull += [dx] * natom
-            djFull += [dy] * natom
-    distances = cdist(atomic_basis, extended_coords)
+    distances,i,j,di,dj = wrap_disp(atomic_basis,lattice_vectors,cutoff)
+
     Ham = models_self_energy[model_type["interlayer"]]*cp.eye(natom,dtype=cp.complex64)
     Overlap = cp.eye(natom,dtype=cp.complex64)
     for i_int,i_type in enumerate(layer_type_set):
@@ -92,11 +101,6 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
                 
                 overlap_model = popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
-            i, j = cp.where((distances > 0.1)  & (distances < cutoff))
-            di = cp.array(diFull)[j]
-            dj = cp.array(djFull)[j]
-            i  = cp.array(i)
-            j  = cp.array(j % natom)
             valid_indices = layer_types[i] == i_type
             valid_indices &= layer_types[j] == j_type
             valid_indices &= i!=j

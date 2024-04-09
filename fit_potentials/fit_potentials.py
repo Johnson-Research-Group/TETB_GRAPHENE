@@ -23,20 +23,31 @@ from ase.build import make_supercell
 from scipy.optimize import curve_fit
 from scipy.spatial import distance
 
-def quadratic_function(x, a, b, c):
-    return a * x**2 + b * x + c
+def quadratic_function(x, a, c, dx):
+    return a * (x-dx)**2 + c
 
 def morse(x, D, a, re, E0):
     return D * np.power((1 - np.exp(-a * (x - re))),2) + E0
 
-def get_binding_energy_sep(d,energy):
+def get_binding_energy_sep(d,energy,min_type="quadratic"):
     min_ind = np.argmin(energy)
     D0 = energy[min_ind]
     re0 = d[min_ind]
     initial_guess = [D0, 1.0, re0, energy[-1]]
     params, covariance = curve_fit(morse, d, energy, p0=initial_guess)
     D_fit, a_fit, re_fit, E0_fit = params
+
     return D_fit, re_fit
+
+def get_energy_min(d,energy):
+    min_ind = np.argmin(energy)
+    E0 = energy[min_ind]
+    dx0 = d[min_ind]
+    initial_guess = [1, E0, dx0]
+    params, covariance = curve_fit(quadratic_function, d[min_ind-1:min_ind+2], energy[min_ind-1:min_ind+2], p0=initial_guess)
+    a_fit, E0_fit, dx_fit = params
+
+    return E0_fit
 
 def get_basis(a, d, c, disregistry, zshift='CM'):
 
@@ -246,7 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('-oz','--optimizer_type',type=str,default="Nelder-Mead")
     args = parser.parse_args() 
    
-    csfont = {'fontname':'serif',"size":20}
+    csfont = {'fontname':'serif',"size":18}
 
     if args.output==None:
         args.output = "fit_"+args.tbmodel+"_"+args.type+"_nkp"+args.nkp
@@ -359,7 +370,7 @@ if __name__ == '__main__':
                 #    continue
         plt.savefig("dft_energies.png")
         plt.clf()
-        """
+        
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
                           "kmesh":kmesh,
@@ -431,7 +442,7 @@ if __name__ == '__main__':
             if tmp_rms >0.15:
                 print("deleting atom id = ",atoms_id[i])
                 print("rms = ",tmp_rms)
-                del db[atoms_id[i]]"""
+                del db[atoms_id[i]]
 
 
     if args.type=="intralayer" and args.fit=="True":
@@ -451,19 +462,13 @@ if __name__ == '__main__':
         pfinal = fitting_obj.fit(p0,bounds=p0_bounds)
         print(pfinal.x)
 
-    if args.type=="interlayer" and args.test=="True":   
-        model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
-                          "basis":"pz",
-                          "kmesh":kmesh,
-                           "parallel":"joblib",
-                          "intralayer potential":"Pz rebo", 
-                           "interlayer potential":"Pz KC inspired",
-                           #"intralayer potential":os.path.join(args.output,"CH_pz.rebo_nkp225"),
-                          #"interlayer potential":os.path.join(args.output,"KC_insp_pz.txt_nkp225_final_version"),
-                          'output':args.output})
+    if args.type=="interlayer" and args.test=="True":
+       
         #intralayer_pot = glob.glob(os.path.join(args.output,"*CH_pz*"),recursive=True)[0]
         #model_dict["intralayer potential"] = intralayer_pot 
         #interlayer_pot = glob.glob(os.path.join(args.output,"KC_insp*_final_version"),recursive=True)[0]
+        #model_dict["interlayer potential"] = interlayer_pot
+        #interlayer_pot = glob.glob(os.path.join(args.output,"CC_QMC.KC"),recursive=True)[0]
         #model_dict["interlayer potential"] = interlayer_pot
         calc_obj = TEGT_calc.TEGT_Calc(model_dict)
 
@@ -477,7 +482,8 @@ if __name__ == '__main__':
         E0_qmc = d_ab["energy"].to_numpy()[min_ind]
         d = d_ab["d"].to_numpy()[min_ind]
         disreg = d_ab["disregistry"].to_numpy()[min_ind]
-
+        relative_tetb_energies = []
+        relative_qmc_energies = []
         E0_tegt = 0
         
         for i,stacking in enumerate(stacking_):
@@ -488,10 +494,16 @@ if __name__ == '__main__':
             dis = disreg_[i]
             d_stack = df.loc[df['stacking'] == stacking, :]
             for j, row in d_stack.iterrows():
+                if row["d"] > 5.01:
+                    continue
                 atoms = get_bilayer_atoms(row["d"],dis)
                 atoms.calc = calc_obj
-                total_energy = (atoms.get_potential_energy())/len(atoms)
-                tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+                if int(args.nkp)>0:
+                    tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
+                    total_energy = (atoms.get_potential_energy())/len(atoms) 
+                else:
+                    total_energy = (atoms.get_potential_energy())/len(atoms)
+                    tb_energy=0
                 tb_energy /= len(atoms)
                 if total_energy<E0_tegt:
                     E0_tegt = total_energy
@@ -506,17 +518,41 @@ if __name__ == '__main__':
             #be_tegt = energy_dis_tegt[-1]
             #sep_tegt = 0
             be_qmc, sep_qmc = get_binding_energy_sep(np.array(d_),np.array(energy_dis_qmc))
-            print(stacking+" TETB Binding Energy = "+str(be_tegt)+" (eV/atom)")
+            energy_min_tetb = get_energy_min(np.array(d_),np.array(energy_dis_tegt))
+            energy_min_qmc = get_energy_min(np.array(d_),np.array(energy_dis_qmc))
+            print(stacking+" TETB Energy Min = "+str(energy_min_tetb)+" (eV/atom)")
             print(stacking+" TETB layer separation = "+str(sep_tegt)+" (angstroms)")
-            print(stacking+" qmc Binding Energy = "+str(be_qmc)+" (eV/atom)")
+            print(stacking+" qmc Energy Min = "+str(energy_min_qmc)+" (eV/atom)")
             print(stacking+" qmc layer separation = "+str(sep_qmc)+" (angstroms)")
 
-            plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " TETB",c=colors[i])
+            relative_tetb_energies.append(energy_dis_tegt)
+            relative_qmc_energies.append(energy_dis_qmc)
+            if int(args.nkp)>0:
+                plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " TETB",c=colors[i])
+            else:
+                plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " Classical",c=colors[i])
             #plt.scatter(d_,np.array(energy_dis_tb)-(energy_dis_tb[-1]),label=stacking + " TB",c=colors[i],marker=",")
             plt.scatter(d_,np.array(energy_dis_qmc)-E0_qmc,label=stacking + " qmc",c=colors[i])
+        
+        relative_tetb_energies = np.array(relative_tetb_energies)
+        relative_tetb_energies -= np.min(relative_tetb_energies)
+        relative_tetb_energies = relative_tetb_energies[relative_tetb_energies>1e-10]
+
+        relative_qmc_energies = np.array(relative_qmc_energies)
+        relative_qmc_energies -= np.min(relative_qmc_energies)
+        relative_qmc_energies = relative_qmc_energies[relative_qmc_energies>1e-10]
+
+        rms = np.mean(np.abs(relative_tetb_energies-relative_qmc_energies) /relative_qmc_energies)
+        
+
+        print("RMS= ",rms)
+
         plt.xlabel(r"Interlayer Distance ($\AA$)",**csfont)
         plt.ylabel("Interlayer Energy (eV)",**csfont)
-        plt.title("TETB(nkp="+str(args.nkp)+")",**csfont)
+        if int(args.nkp)>0:
+            plt.title("TETB(nkp="+str(args.nkp)+")",**csfont)
+        else:
+            plt.title("Classical",**csfont)
         plt.tight_layout()
         plt.legend()
         plt.savefig("kc_insp_test_nkp"+str(args.nkp)+".jpg")
@@ -524,13 +560,7 @@ if __name__ == '__main__':
 
         
     if args.type=="intralayer" and args.test=="True":
-        model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
-                        "basis":"pz",
-                        "kmesh":kmesh,
-                        "intralayer potential":"Pz rebo",
-                        "interlayer potential":"Pz KC inspired",
-                        "parallel":"joblib",
-                        'output':args.output}) 
+         
         #intralayer_pot = glob.glob(os.path.join(args.output,"CH_pz*_final_version"),recursive=True)[0]
         #model_dict["intralayer potential"] = intralayer_pot
         #interlayer_pot = glob.glob(os.path.join(args.output,"*KC_insp*"),recursive=True)[0]
@@ -683,9 +713,12 @@ if __name__ == '__main__':
             atoms_id.append(row.id)
             atoms.calc = calc_obj
             lammps_forces,lammps_pe,tote = calc_obj.run_lammps(atoms)
-            e = (tote)/len(atoms) + row.data.tb_energy #energy per atom
-            print("lammps energy = ",tote/len(atoms)," (eV/atom)")
-            print("tb energy = ",row.data.tb_energy," (eV/atom)")
+            if int(args.nkp)>0:
+                e = (tote)/len(atoms) + row.data.tb_energy #energy per atom
+                print("lammps energy = ",tote/len(atoms)," (eV/atom)")
+                print("tb energy = ",row.data.tb_energy," (eV/atom)")
+            else:
+                e = (tote)/len(atoms)
             #e = atoms.get_potential_energy()/len(atoms)
             atoms.calc = calc_obj_classical
             classical_e = atoms.get_potential_energy()/len(atoms)
@@ -719,13 +752,11 @@ if __name__ == '__main__':
         for i,e in enumerate(tegtb_energy):
             line = np.linspace(0,1,10)
             ediff_line = line*((dft_energy[i]-dft_min) - (e-rebo_min)) + (e-rebo_min)
-            tmp_rms = np.abs((dft_energy[i]-dft_min) - (e-rebo_min))
-            tmp_rebo_rms = np.abs((dft_energy[i]-dft_min) - (rebo_energy[i]-emprebo_min))
+            tmp_rms = np.linalg.norm((dft_energy[i]-dft_min) - (e-rebo_min))/(dft_energy[i]-dft_min)
+            tmp_rebo_rms = np.linalg.norm((dft_energy[i]-dft_min) - (rebo_energy[i]-emprebo_min))/(dft_energy[i]-dft_min)
             #if tmp_rms >0.15:
             #    del db[atoms_id[i]]
             #    continue
-            rms_tetb.append(tmp_rms)
-            rms_rebo.append(tmp_rebo_rms)
             print("dft energy (eV/atom) = ",dft_energy[i]-dft_min)
             print("tegtb energy (eV/atom) = ",e-rebo_min)
             print("tb energy (eV/atom) = ",tb_energy[i]-tb_min)
@@ -734,6 +765,9 @@ if __name__ == '__main__':
             average_distance = nn_dist[i]
             if nn_dist[i] > 1.5 or (dft_energy[i]-dft_min)>0.4:
                 continue
+            rms_tetb.append(tmp_rms)
+            rms_rebo.append(tmp_rebo_rms)
+
             if i==0:
                 plt.scatter(average_distance,e-rebo_min,color="red",label="TETB")
                 #plt.scatter(average_distance,rebo_energy[i]-emprebo_min,color="orange",label="Rebo")
@@ -746,16 +780,34 @@ if __name__ == '__main__':
                 #plt.scatter(average_distance,tb_energy[i]-tb_min,color="green")
                 plt.scatter(average_distance,dft_energy[i]-dft_min,color="blue")
                 plt.plot(average_distance*np.ones_like(line),ediff_line,color="black")
+            
+            #c = np.abs((dft_energy[i]-dft_min) - (e-rebo_min))
+            #plt.scatter(average_distance,e-rebo_min,c=c,label="TETB")
         
-        rms_tetb = np.mean(np.abs(np.array(tegtb_energy)-rebo_min-(np.array(dft_energy)-dft_min)))
-        rms_rebo = np.mean(np.abs(np.array(rebo_energy)-emprebo_min-(np.array(dft_energy)-dft_min)))
+        print("rms tetb ",rms_tetb)
+
+        rms_tetb = np.array(rms_tetb)
+        rms_rebo = np.array(rms_rebo)
+        rms_tetb = rms_tetb[rms_tetb<1e3]
+        rms_rebo = rms_rebo[rms_rebo<1e3]
+        rms_tetb = np.mean(rms_tetb)
+        rms_rebo = np.mean(rms_rebo)
+        #rms_tetb = np.mean(np.abs(np.array(tegtb_energy)-rebo_min-(np.array(dft_energy)-dft_min)))
+        #rms_rebo = np.mean(np.abs(np.array(rebo_energy)-emprebo_min-(np.array(dft_energy)-dft_min)))
+        print("average rms tetb = ",rms_tetb)
         
         print("average difference in tetb energy across all configurations = "+str(rms_tetb)+" (eV/atom)")
         print("average difference in rebo energy across all configurations = "+str(rms_rebo)+" (eV/atom)")
-        plt.xlabel("average nearest neighbor distance (angstroms)")
-        plt.ylabel("energy above ground state (eV/atom)")
-        plt.title("Corrective Intralayer Potential for mLG, num kpoints = "+str(args.nkp))
+        plt.xlabel(r"average nearest neighbor distance ($\AA$)",**csfont)
+        plt.ylabel("energy (eV/atom)",**csfont)
+        if int(args.nkp)>0:
+            plt.title("TETB(nkp="+str(args.nkp)+")",**csfont)
+        else:
+            plt.title("Classical",**csfont)
         plt.legend()
+        #plt.colorbar().set_label('RMS', rotation=270,**csfont)
+        plt.clim((1e-5,1e-4))
+        plt.tight_layout()
         plt.savefig("rebo_test_nkp"+str(nkp)+".jpg")
         plt.show()
         plt.clf()
@@ -772,9 +824,10 @@ if __name__ == '__main__':
             strain_ind = np.isclose(strain_x,dx*np.ones_like(strain_x),rtol=1e-4)
             strain_sort_ind = np.argsort(strain_y[strain_ind])
             color = np.random.rand(3)
-            plt.plot(strain_y[strain_ind][strain_sort_ind],tegtb_energy[strain_ind][strain_sort_ind],c=color)
-            plt.plot(strain_y[strain_ind][strain_sort_ind],dft_energy[strain_ind][strain_sort_ind],linestyle="dashed",c=color)
-            plt.plot(strain_y[strain_ind][strain_sort_ind],rebo_energy[strain_ind][strain_sort_ind],linestyle="dotted",c=color)
+            plt.plot(strain_y[strain_ind][strain_sort_ind],tegtb_energy[strain_ind][strain_sort_ind],color="red")
+            plt.scatter(strain_y[strain_ind][strain_sort_ind],dft_energy[strain_ind][strain_sort_ind],color="black")
+            #plt.plot(strain_y[strain_ind][strain_sort_ind],dft_energy[strain_ind][strain_sort_ind],linestyle="dashed",c=color)
+            #plt.plot(strain_y[strain_ind][strain_sort_ind],rebo_energy[strain_ind][strain_sort_ind],linestyle="dotted",c=color)
         plt.xlabel("strain along lattice vector 1")
         plt.ylabel("energy above ground state (eV/atom)")
         plt.title("Corrective Intralayer Potential for mLG with biaxial strain, num kpoints = "+str(args.nkp))

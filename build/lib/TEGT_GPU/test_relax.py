@@ -16,6 +16,7 @@ import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
 import TEGT_GPU.TEGT_calc
+import TEGT_CPU.TEGT_calc
 
 def get_atom_pairs(n,a):
     L=n*a+10
@@ -118,11 +119,11 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     
    
 if __name__=="__main__":
-    test_tbforces=True
-    test_tbenergy=True
+    test_tbforces=False
+    test_tbenergy=False
     test_lammps=False
     test_bands=False
-    test_relaxation=False
+    test_relaxation=True
     test_scaling=False
     theta = 21.78
     #theta = 5.09
@@ -131,7 +132,7 @@ if __name__=="__main__":
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
                           "kmesh":(1,1,1),
-                          "parallel":"joblib",
+                          "parallel":"serial",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
@@ -147,8 +148,8 @@ if __name__=="__main__":
         for i,a in enumerate(a_):
             #    for j,n in enumerate(n_):
                 #atoms = get_stack_atoms(n,a)
-            atoms = get_atom_pairs(n,a)
-            #atoms = get_random_atoms(n,a)
+            #atoms = get_atom_pairs(n,a)
+            atoms = get_random_atoms(n,a)
             pos = atoms.positions
             print("n= ",n," a= ",a)
             tb_energy,tb_forces = calc_obj.run_tight_binding(atoms)
@@ -285,7 +286,7 @@ if __name__=="__main__":
     if test_bands:
         # srun -num tasks nkp -gpu's per task 1 python test_relax.py ideally
         #test band structure
-        theta=21.78
+        theta=5.09 #21.78
         atoms = get_twist_geom(theta,3.35)
         Gamma = [0,   0,   0]
         K = [2/3,1/3,0]
@@ -304,13 +305,14 @@ if __name__=="__main__":
         #theta = 2.88
         theta = 5.09
         atoms = get_twist_geom(theta,3.35)
+        calc_folder = "theta_"+str(theta).replace(".","_")
         model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                           "basis":"pz",
-                          "kmesh":(15,15,1),
-                          "parallel":"dask",
+                          "kmesh":(1,1,1),
+                          "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
-                          'output':"theta_21_78"})
+                          'output':calc_folder})
 
         calc_obj = TEGT_GPU.TEGT_calc.TEGT_Calc(model_dict)
         #atoms = get_graphite(3.35)
@@ -322,11 +324,10 @@ if __name__=="__main__":
         #else:
         #    atoms = ase.io.read(os.path.join(calc_folder,"theta_"+str(theta)+".traj"))
         #energy = atoms.get_potential_energy()
-        #dyn = FIRE(atoms,
+        dyn = FIRE(atoms,
+                   trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
+                   logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
+        #dyn = BFGS(atoms,
         #           trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
         #           logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
-        dyn = BFGS(atoms,
-                   trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
-                   logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"),
-                   restart = os.path.join(calc_folder,"theta_"+str(theta)+".restart"))
         dyn.run(fmax=0.00005)

@@ -1,12 +1,14 @@
-#from cupyx.scipy.spatial.distance import cdist
-from scipy.spatial.distance import cdist
-import numpy as cp
+#from scipy.spatial.distance import cdist
+#import numpy as cp
+import cupy as cp
+from cupyx.scipy.spatial.distance import cdist
 import numpy as np
 from TEGT_GPU.TB_parameters import *
 #from TB_parameters import *
 import matplotlib.pyplot as plt
 import glob
 import scipy.linalg as spla
+
 models_functions_interlayer = {'letb':letb_interlayer,
                                     'mk':mk,
                                     'popov':popov,
@@ -27,6 +29,27 @@ models_cutoff_intralayer={'letb':10,
                         'mk':10,
                         'porezag':3.7,
                         "nn":4.4}
+def get_unique_set(array):
+    unique_set = cp.array([])
+    for elem in array:
+        if elem in unique_set:
+            continue
+        else:
+            unique_set = cp.append(unique_set,elem)
+    return cp.array(unique_set)
+
+def generalized_eigen(A,B):
+    Binv = cp.linalg.inv(B)
+    renorm_A  = Binv @ A
+    eigvals,eigvecs = cp.linalg.eigh(renorm_A)
+    #normalize eigenvectors s.t. eigvecs.conj().T @ B @ eigvecs = I
+    Q = eigvecs.conj().T @ B @ eigvecs
+    U = cp.linalg.cholesky(cp.linalg.inv(Q))
+    eigvecs = eigvecs @ U
+    eigvals = cp.diag(eigvecs.conj().T @ A @ eigvecs).real
+    #print("GPU version ",np.round((eigvecs.conj().T @ B @ eigvecs).real,decimals=2))
+
+    return eigvals,eigvecs
 
 def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
@@ -44,7 +67,7 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     kpoint = cp.asarray(kpoint)/conversion
 
     layer_types = cp.asarray(layer_types)
-    layer_type_set = set(layer_types)
+    layer_type_set = get_unique_set(layer_types)
 
     natom = len(atomic_basis)
     diFull = []
@@ -56,7 +79,6 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
             diFull += [dx] * natom
             djFull += [dy] * natom
     distances = cdist(atomic_basis, extended_coords)
-    
     Ham = models_self_energy[model_type["interlayer"]]*cp.eye(natom,dtype=cp.complex64)
     Overlap = cp.eye(natom,dtype=cp.complex64)
     for i_int,i_type in enumerate(layer_type_set):
@@ -102,6 +124,8 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     lattice_vectors = cp.array(lattice_vectors)*conversion
     atomic_basis = atomic_basis*conversion
     nocc = natoms//2
+
+    # make this more data efficient
     fd_dist = 2*cp.eye(natoms)
     fd_dist[nocc:,nocc:] = 0
     occ_eigvals = 2*cp.diag(eigvals)
@@ -111,7 +135,7 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     tot_eng = 2 * cp.sum(eigvals[:nocc])
 
     Forces = cp.zeros((natoms,3))
-    layer_type_set = set(layer_types)
+    layer_type_set = get_unique_set(layer_types)
 
     diFull = []
     djFull = []
@@ -123,7 +147,7 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
             djFull += [dy] * natoms
     distances = cdist(atomic_basis, extended_coords)
 
-    gradH = np.zeros((len(diFull),natoms,3))
+    #gradH = cp.zeros((len(diFull),natoms,3))
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
 
@@ -176,7 +200,7 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
             Pulay += cp.conj(Pulay)
 
             for atom_ind in range(natoms):
-                use_ind = cp.squeeze(cp.where(i[valid_indices]==atom_ind))
+                use_ind = (cp.where(i[valid_indices]==atom_ind))[0]
                 ave_gradH = gradH[use_ind,:]
                 ave_gradS = Pulay[use_ind,:] 
                 if ave_gradH.ndim!=2:
@@ -189,22 +213,27 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
 
 def get_hellman_feynman_fd(atom_positions, layer_types, cell, eigvec, model_type,kpoint):
     dr = 1e-3
+   
     natoms, _ = atom_positions.shape
     nocc = natoms // 2
-    Forces = np.zeros((natoms, 3), dtype=np.float64)
+    Forces = cp.zeros((natoms, 3), dtype=cp.float64)
     for dir_ind in range(3):
         for i in range(natoms):
-            atom_positions_pert = np.copy(atom_positions)
+            atom_positions_pert = cp.copy(atom_positions)
             atom_positions_pert[i, dir_ind] += dr
             Ham,Overlap = gen_ham_ovrlp(atom_positions_pert, layer_types, cell, kpoint, model_type)
-            eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
-            Energy_up = 2 * np.sum(eigvalues[:nocc])
+            eigvalues, eigvectors = generalized_eigen(Ham,Overlap)
+            #eigvalues,eigvectors = spla.eigh(cp.asnumpy(Ham),b=cp.asnumpy(Overlap))
+            #eigvalues = cp.asarray(eigvalues)
+            Energy_up = 2 * cp.sum(eigvalues[:nocc])
             
-            atom_positions_pert = np.copy(atom_positions)
+            atom_positions_pert = cp.copy(atom_positions)
             atom_positions_pert[i, dir_ind] -= dr
             Ham,Overlap = gen_ham_ovrlp(atom_positions_pert, layer_types, cell, kpoint, model_type)
-            eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
-            Energy_dwn = 2 * np.sum(eigvalues[:nocc])
+            eigvalues, eigvectors = generalized_eigen(Ham,Overlap)
+            #eigvalues,eigvectors = spla.eigh(cp.asnumpy(Ham),b=cp.asnumpy(Overlap))
+            #eigvalues = cp.asarray(eigvalues)
+            Energy_dwn = 2 * cp.sum(eigvalues[:nocc])
 
             Forces[i, dir_ind] = -(Energy_up - Energy_dwn) / (2 * dr)
 
