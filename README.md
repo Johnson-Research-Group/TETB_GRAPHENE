@@ -6,6 +6,8 @@ First, clone this repository
 
 ```git clone https://github.com/Johnson-Research-Group/TETB_GRAPHENE.git```
 
+```cd TETB_GRAPHENE```
+
 ```git checkout TETB_GRAPHENE_GPU```
 
 This module depends on pylammps. In order to install pylammps a virtual environment must be present (https://docs.lammps.org/Python_install.html)
