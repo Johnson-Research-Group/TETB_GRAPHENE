@@ -14,7 +14,7 @@ Then, run the following command from the command line to install pylammps with t
 
 Once pylammps has been installed, install TETB_GRAPHENE using pip
 
-```pip install TETB_GRAPHENE```
+```pip install ../TETB_GRAPHENE```
 
 # Directory structure:
  * TETB_GRAPHENE/ source code
