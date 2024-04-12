@@ -1,8 +1,1 @@
-include parameters/KC_insp.txt
-include parameters/KC_insp_pz.txt
-include parameters/KC_insp_pz.txt_nkp225
-include parameters/fullKC.txt
-
-include parameters/CH.rebo
-include parameters/CH_pz.rebo
-include parameters/CH_pz.rebo_nkp225
+include TETB_GRAPHENE/parameters/*
