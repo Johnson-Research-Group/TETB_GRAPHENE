@@ -5,14 +5,21 @@ import shutil
 def lammps_installer(lammps_dir):
     print("installing shared library mode LAMMPS")
     cwd = os.getcwd()
-    if lammps_dir:
-        subprocess.call("cd "+lammps_dir,shell=True)
-    subprocess.call("git clone https://github.com/lammps/lammps.git",shell=True)
-    subprocess.call("cd lammps; git checkout b8acd2e31de3d19ac0a4629ef168e183335bcc74",shell=True)
+    subprocess.call("cd "+lammps_dir,shell=True)
+    if not os.path.exists("lammps"):
+        subprocess.call("git clone https://github.com/lammps/lammps.git",shell=True)
+    
+    os.chdir("lammps")
+    subprocess.call("git checkout b8acd2e31de3d19ac0a4629ef168e183335bcc74",shell=True)
 
-    subprocess.call("cd src",shell=True)
+    os.chdir("src")
     subprocess.call("cp "+os.path.join(cwd,"TETB_GRAPHENE/parameters/pair_reg_dep_poly.*")+" .",shell=True)
-    subprocess.call("make serial mode=shared")
+    subprocess.call("make clean-all",shell=True)
+    subprocess.call("make yes-tally",shell=True)
+    subprocess.call("make yes-molecule",shell=True)
+    subprocess.call("make yes-manybody",shell=True)
+    subprocess.call("make yes-interlayer",shell=True)
+    subprocess.call("make -j 16 serial mode=shared",shell=True)
     subprocess.call("make install-python",shell=True)
 
 
