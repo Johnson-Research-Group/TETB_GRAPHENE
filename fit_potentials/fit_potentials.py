@@ -105,6 +105,7 @@ def get_monolayer_atoms(dx,dy,a=2.462):
     return ase.Atoms(atoms) 
     
 def write_kcinsp(params,kc_file):
+    """write kc inspired potential """
     params = params[:9]
     params = " ".join([str(x) for x in params])
     headers = '               '.join(['', "delta","C","C0 ","C2","C4","z0","A6","A8","A10"])
