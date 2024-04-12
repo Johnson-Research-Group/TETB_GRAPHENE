@@ -44,12 +44,13 @@ def fang(rvec, a0, b0, c0, a3, b3, c3, a6, b6, c6, d6):
     return f
 #@njit
 def chebyshev_t(c, x):
-    #if c.dtype.char in '?bBhHiIlLqQpP':
-    #    c = c.astype(np.double)
-    #if isinstance(x, (tuple, list)):
-    #    x = np.asarray(x)
-    #if isinstance(x, np.ndarray):
-    #    c = c.reshape(c.shape + (1,)*x.ndim)
+    """chebyshev polynomials
+     
+    :params c: (np.ndarray) coefficients
+     
+    :params x: (np.ndarray) inputs
+    
+    :returns: (np.ndarray) """
 
     if len(c) == 1:
         c0 = c[0]
@@ -84,8 +85,14 @@ def norm(a):
 ###############################################################################
 #@njit
 def popov_hopping(dR):
+    """pairwise Slater Koster Interlayer hopping parameters for pz orbitals of carbon as parameterized by Popov, Van Alsenoy in
+     "Low-frequency phonons of few-layer graphene within a tight-binding model". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Hamiltonian matrix elements [eV]
+    """
     dRn = np.linalg.norm(dR, axis=1)
-    #dRn = norm(dR)
     dRn = dR / dRn[:,np.newaxis]
     eV_per_hart=27.2114
 
@@ -115,15 +122,19 @@ def popov_hopping(dR):
     return valmat*eV_per_hart
 
 def popov_overlap(dR):
+    """pairwise Slater Koster Interlayer overlap parameters for pz orbitals of carbon as parameterized by Popov, Van Alsenoy in
+     "Low-frequency phonons of few-layer graphene within a tight-binding model". function is fully vectorized
 
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Overlap matrix elements [eV]
+    """
     dRn = np.linalg.norm(dR, axis=1)
-    #dRn = norm(dR)
     dRn = dR / dRn[:,np.newaxis]
 
     l = dRn[:, 0]
     m = dRn[:, 1]
     n = dRn[:, 2]
-    #r = norm(dR)
     r = np.linalg.norm(dR,axis=1)
     r = np.clip(r, 1, 10)
   
@@ -150,7 +161,13 @@ def popov_overlap(dR):
 
 #@njit
 def popov_hopping_grad(dR):
-    #dRn = np.linalg.norm(dR, axis=1)
+    """pairwise Slater Koster Interlayer hopping gradient parameters for pz orbitals of carbon as parameterized by Popov, Van Alsenoy in
+     "Low-frequency phonons of few-layer graphene within a tight-binding model". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Hamiltonian Gradient matrix elements [eV/bohr]
+    """
     dRn = norm(dR)
     dRn = dR / dRn[:,np.newaxis]
     eV_per_hart=27.2114
@@ -208,7 +225,13 @@ def popov_hopping_grad(dR):
     return gradt * eV_per_hart * 2/(b-aa)
 
 def popov_overlap_grad(dR):
-    #dRn = np.linalg.norm(dR, axis=1)
+    """pairwise Slater Koster Interlayer overlap gradient parameters for pz orbitals of carbon as parameterized by Popov, Van Alsenoy in
+     "Low-frequency phonons of few-layer graphene within a tight-binding model". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) overlap gradient matrix elements [eV/bohr]
+    """
     dRn = norm(dR)
     dRn = dR / dRn[:,np.newaxis]
     eV_per_hart=27.2114
@@ -267,14 +290,7 @@ def popov_overlap_grad(dR):
 #@njit
 def popov(lattice_vectors, atomic_basis, i, j, di, dj):
     """
-    Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
-    Input: 
-        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for intralayer in BOHR
-        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
-        i, j            - int   (n) list of atomic bases you are hopping between
-        di, dj          - int   (n) list of displacement indices for the hopping
-    Output:
-        hoppings        - float (n) list of hoppings for the given i, j, di, dj
+    popov parameter wrapper
     """
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     hoppings = popov_hopping(disp)
@@ -282,6 +298,7 @@ def popov(lattice_vectors, atomic_basis, i, j, di, dj):
     return hoppings
 #@njit
 def popov_grad(lattice_vectors, atomic_basis, i, j, di, dj):
+    """popov grad parameter wrapper """
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     hopping_grad = popov_hopping_grad(disp)
                 
@@ -294,8 +311,14 @@ def popov_grad(lattice_vectors, atomic_basis, i, j, di, dj):
 ####################################################################################################
 #@njit
 def porezag_hopping(dR):
+    """pairwise Slater Koster hopping parameters for pz orbitals of carbon as parameterized by Porezag in
+     "Construction of tight-binding-like potentials on the basis of density-functional theory: Application to carbon". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Hamiltonian matrix elements [eV]
+    """
     dRn = np.linalg.norm(dR, axis=1)
-    #dRn = norm(dR)
     dRn = dR / dRn[:,np.newaxis]
     eV_per_hart=27.2114
 
@@ -325,6 +348,13 @@ def porezag_hopping(dR):
     return valmat*eV_per_hart
 
 def porezag_overlap(dR):
+    """pairwise Slater Koster overlap parameters for pz orbitals of carbon as parameterized by Porezag in
+     "Construction of tight-binding-like potentials on the basis of density-functional theory: Application to carbon". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Overlap matrix elements [eV]
+    """
     eV_per_hart=27.2114
     dRn = np.linalg.norm(dR, axis=1)
     #dRn = norm(dR)
@@ -361,6 +391,13 @@ def porezag_overlap(dR):
     return Ezz #*eV_per_hart
 
 def porezag_hopping_grad(dR):
+    """pairwise Slater Koster hopping gradient parameters for pz orbitals of carbon as parameterized by Porezag in
+     "Construction of tight-binding-like potentials on the basis of density-functional theory: Application to carbon". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Hamiltonian gradient matrix elements [eV/bohr]
+    """
     dRn = np.linalg.norm(dR, axis=1)
     dRn = dR / dRn[:,np.newaxis]
     eV_per_hart=27.2114
@@ -414,6 +451,13 @@ def porezag_hopping_grad(dR):
     return gradt * eV_per_hart * 2/(b-aa)
 
 def porezag_overlap_grad(dR):
+    """pairwise Slater Koster overlap gradient parameters for pz orbitals of carbon as parameterized by Porezag in
+     "Construction of tight-binding-like potentials on the basis of density-functional theory: Application to carbon". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Overlap gradient matrix elements [eV/bohr]
+    """
     dRn = np.linalg.norm(dR, axis=1)
     dRn = dR / dRn[:,np.newaxis]
     eV_per_hart=27.2114
@@ -470,20 +514,14 @@ def porezag_overlap_grad(dR):
 #@njit
 def porezag(lattice_vectors, atomic_basis, i, j, di, dj):
     """
-    Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
-    Input: 
-        lattice_vectors - float (nlat x 3) where nlat = 2 lattice vectors for intralayer in BOHR
-        atomic_basis    - float (natoms x 3) where natoms are the number of atoms in the computational cell in BOHR
-        i, j            - int   (n) list of atomic bases you are hopping between
-        di, dj          - int   (n) list of displacement indices for the hopping
-    Output:
-        hoppings        - float (n) list of hoppings for the given i, j, di, dj
+    porezag parameter wrapper
     """
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     hoppings = porezag_hopping(disp)
     return hoppings
 #@njit
 def porezag_grad(lattice_vectors, atomic_basis, i, j, di, dj):
+    """porezag gradient parameter wrapper """
     disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
     hopping_grad = porezag_hopping_grad(disp)
                 
@@ -516,7 +554,8 @@ def mk(lattice_vectors, atomic_basis, i, j, di, dj):
     hoppings = moon([np.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48)
     return hoppings
 #@njit
-def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj) : #lattice_vectors, atomic_basis, i, j, di, dj):
+def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj) :
+    """nearest neighbor hopping. atomic basis in bohr. hoppings in eV"""
     conversion = 1.0/.529177 #[bohr/angstrom]
     lattice_vectors = np.array(lattice_vectors)
     atomic_basis = np.array(atomic_basis)
