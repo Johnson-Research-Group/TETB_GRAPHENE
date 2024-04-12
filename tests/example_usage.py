@@ -61,9 +61,11 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
 
 if __name__=="__main__":
     #generate tblg ase.atoms object 
+    # **note, graphene layers are labeled with the "mol-id" array. i.e. atoms in layer 1 have mol-id = 1
     theta = 5.09
     atoms = get_twist_geom(theta,3.35)
-
+    print(atoms.get_array("mol-id"))
+    
     #setup TETB_GRAPHENE calculator
     calc_folder = "theta_"+str(theta).replace(".","_")
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
