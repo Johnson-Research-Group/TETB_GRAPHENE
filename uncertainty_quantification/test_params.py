@@ -8,8 +8,9 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
-import reformat_TETB_GRAPHENE.TETB_GRAPHENE_calc
-
+import reformat_TETB_GRAPHENE_calc
+import pandas as pd
+from ase.build import make_supercell
 def get_atom_pairs(n,a):
     L=n*a+10
     sym=""
@@ -25,7 +26,19 @@ def get_atom_pairs(n,a):
                   cell=[L,L,L])
     atoms.set_array('mol-id',mol_id)
     return atoms
-
+def get_bilayer_atoms(d,disregistry, a=2.46, c=20, sc=5,zshift='CM'):
+    '''All units should be in angstroms'''
+    symbols = ["B","B","Ti","Ti"]
+    atoms = ase.Atoms(
+        symbols=symbols,
+        positions=get_basis(a, d, c, disregistry, zshift=zshift),
+        cell=get_lattice_vectors(a, c),
+        pbc=[1, 1, 1],
+        tags=[0, 0, 1, 1],
+        )
+    atoms.set_array("mol-id",np.array([1,1,2,2],dtype=np.int8))  
+    atoms = make_supercell(atoms, [[sc, 0, 0], [0, sc, 0], [0, 0, 1]])
+    return atoms
 def get_random_atoms(n,a):
     L=n*a+10
     sym=""
@@ -55,7 +68,38 @@ def get_twist_geom(t,sep,a=2.46):
                                         p=p_found,q=q_found,lat_con=a,sym=["B","Ti"],
                                         mass=[12.01,12.02],sep=sep,h_vac=20)
     return atoms
+def get_basis(a, d, c, disregistry, zshift='CM'):
 
+    '''
+    `disregistry` is defined such that the distance to disregister from AB to AB again is 1.0,
+    which corresponds to 3*bond_length = 3/sqrt(3)*lattice_constant = sqrt(3)*lattice_constant
+    so we convert the given `disregistry` to angstrom
+    '''
+    disregistry_ang = 3**0.5*a*disregistry
+    orig_basis = np.array([
+        [0, 0, 0],
+        [0, a/3**0.5, 0],
+        [0, a/3**0.5 + disregistry_ang, d],
+        [a/2, a/(2*3**0.5) + disregistry_ang, d]
+        ])
+
+    # for open boundary condition in the z-direction
+    # move the first layer to the middle of the cell
+    if zshift == 'first_layer':
+        z = c/2
+    # or move the center of mass to the middle of the cell
+    elif zshift == 'CM':
+        z = c/2 - d/2
+    shift_vector = np.array([0, 0, z])
+    shifted_basis = orig_basis + shift_vector
+    return shifted_basis.tolist()
+
+def get_lattice_vectors(a, c):
+    return [
+        [a, 0, 0],
+        [1/2*a, 1/2*3**0.5*a, 0],
+        [0, 0, c]
+        ]
 def get_graphite(s,a=2.46):
     atoms = Graphite(symbol = 'B',latticeconstant={'a':a,'c':2*s},
                size=(2,2,2))
@@ -109,28 +153,66 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
     fig.savefig(figname)
     plt.clf()
 
-def calc_gsfe_layer_sep(calc,db):
-    energy_array = []
-    forces_array = []
-    for row in db.select():
-        atoms = db.get_atoms(id = row.id)
-        atoms.calc = calc
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
+def gsfe_layer_sep(calc):
+    stacking_ = ["AB","SP","Mid","AA"]
+    disreg_ = [0 , 0.16667, 0.5, 0.66667]
+    colors = ["blue","red","black","green"]
+    d_ = np.linspace(3,5,5)
+    df = pd.read_csv('../data/qmc.csv') 
+    d_ab = df.loc[df['disregistry'] == 0, :]
+    min_ind = np.argmin(d_ab["energy"].to_numpy())
+    E0_qmc = d_ab["energy"].to_numpy()[min_ind]
+    d = d_ab["d"].to_numpy()[min_ind]
+    disreg = d_ab["disregistry"].to_numpy()[min_ind]
+    relative_tetb_energies = []
+    relative_qmc_energies = []
+    E0_tegt = 0
+        
+    for i,stacking in enumerate(stacking_):
+        energy_dis_tegt = []
+        energy_dis_qmc = []
+        energy_dis_tb = []
+        d_ = []
+        dis = disreg_[i]
+        d_stack = df.loc[df['stacking'] == stacking, :]
+        for j, row in d_stack.iterrows():
+            if row["d"] > 5.01:
+                continue
+            atoms = get_bilayer_atoms(row["d"],dis)
+            atoms.calc = calc_obj
+            total_energy = (atoms.get_potential_energy())/len(atoms) 
+            
+            if total_energy<E0_tegt:
+                E0_tegt = total_energy
+            qmc_total_energy = (row["energy"])
 
-        energy_array.append(energy)
-        forces_array.append(forces)
-    return np.array(energy_array), np.array(forces_array)
-
+            energy_dis_tegt.append(total_energy)
+            energy_dis_qmc.append(qmc_total_energy)
+            #energy_dis_tb.append(tb_energy)
+            d_.append(row["d"])
+                
+        relative_tetb_energies.append(energy_dis_tegt)
+        relative_qmc_energies.append(energy_dis_qmc)
+        plt.plot(d_,np.array(energy_dis_tegt)-E0_tegt,label=stacking + " TETB",c=colors[i])
+        plt.scatter(d_,np.array(energy_dis_qmc)-E0_qmc,label=stacking + " qmc",c=colors[i])
+        
+    plt.xlabel(r"Interlayer Distance ($\AA$)",**csfont)
+    plt.ylabel("Interlayer Energy (eV)",**csfont)
+    plt.title("TETB(nkp=121)",**csfont)
+    plt.tight_layout()
+    plt.legend()
+    plt.savefig("kc_insp_test_nkp.jpg")
+    plt.show()
+ 
 if __name__=="__main__":
     test_tbforces=False
     test_tbenergy=False
     test_lammps=False
-    test_bands=True
-    vary_params = False
+    test_bands=False
+    vary_params = True
     theta = 21.78
     #theta = 5.09
-    
+     
     popov_hopping_params = np.array([[0.1727212, -0.0937225, -0.0445544, 0.1114266,-0.0978079, 0.0577363, -0.0262833, 0.0094388,-0.0024695, 0.0003863],
                                      [-0.3969243, 0.3477657, -0.2357499, 0.1257478,-0.0535682, 0.0181983, -0.0046855, 0.0007303,0.0000225, -0.0000393]])
     popov_ovrlp_params = np.array([[-0.0571487, -0.0291832, 0.1558650, -0.1665997,0.0921727, -0.0268106, 0.0002240, 0.0040319,-0.0022450, 0.0005596],
@@ -140,7 +222,7 @@ if __name__=="__main__":
                               [-0.3793837, 0.3204470, -0.1956799, 0.0883986,-0.0300733, 0.0074465, -0.0008563, -0.0004453, 0.0003842, -0.0001855]])
     porezag_ovrlp_params=np.array([[-0.1359608, 0.0226235, 0.1406440, -0.1573794,0.0753818, -0.0108677, -0.0075444, 0.0051533,-0.0013747, 0.0000751],
                 [0.3715732, -0.3070867, 0.1707304, -0.0581555,0.0061645, 0.0051460, -0.0032776, 0.0009119,-0.0001265, -0.000227]])
-    
+    print(popov_hopping_params[:,0])
     model_dict = dict({"tight binding parameters":{"interlayer":{"name":"popov","hopping param":popov_hopping_params,"overlap param":popov_ovrlp_params},
                                                    "intralayer":{"name":"porezag","hopping param":porezag_hopping_params,"overlap param":porezag_ovrlp_params }}, 
                           "basis":"pz",
@@ -150,7 +232,7 @@ if __name__=="__main__":
                           "interlayer potential":"Pz KC inspired",
                           'output':"theta_21_78"})
     
-    calc_obj = reformat_TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
+    #calc_obj = reformat_TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
     csfont = {'fontname':'serif',"size":20} 
     if test_tbforces:
         #test forces pairwise
@@ -243,37 +325,20 @@ if __name__=="__main__":
         import ase.db
         scale = 1e-2
         nkp = 121
-        kmesh = (np.int(np.sqrt(nkp)),np.int(np.sqrt(nkp)),1)
-        nsamples = 100
-        energies = np.zeros((nsamples,40))
-        db = ase.db.connect('../data/bilayer_nkp'+nkp+'.db')
-        for i in range(nsamples):
-            popov_hopping_params += np.random.normal(size=np.shape(popov_hopping_params),scale=scale)
-            popov_ovrlp_params += np.random.normal(size=np.shape(popov_hopping_params),scale=scale)
-
-            porezag_hopping_params += np.random.normal(size=np.shape(popov_hopping_params),scale=scale)
-            porezag_ovrlp_params += np.random.normal(size=np.shape(popov_hopping_params),scale=scale)
-
-            model_dict = dict({"tight binding parameters":{"interlayer":{"name":"popov","hopping param":popov_hopping_params,"overlap param":popov_ovrlp_params},
-                                                   "intralayer":{"name":"porezag","hopping param":porezag_hopping_params,"overlap param":porezag_ovrlp_params }}, 
-                          "basis":"pz",
-                          "kmesh":kmesh,
-                          "parallel":"joblib",
-                          "intralayer potential":"Pz rebo",
-                          "interlayer potential":"Pz KC inspired",
-                          'output':"theta_21_78"})
+        kmesh = (int(np.sqrt(nkp)),int(np.sqrt(nkp)),1)
+        db = ase.db.connect('../data/bilayer_nkp'+str(nkp)+'.db')
+        model_dict = dict({"tight binding parameters":{"interlayer":{"hopping":{"model":"popov","params":popov_hopping_params},
+                                                              "overlap":{"model":"popov","params":None}},
+                                                "intralayer":{"hopping":{"model":"porezag","params":None},
+                                                              "overlap":{"model":"porezag","params":None}}},
+            "basis":"pz",
+            "kmesh":kmesh,
+            "parallel":"joblib",
+            "intralayer potential":"Pz rebo",
+            "interlayer potential":"Pz KC inspired",
+            'output':"TETB_gsfe"})
     
-            calc_obj = reformat_TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
+        calc_obj = reformat_TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
 
-            energies[i,:] = calc_gsfe_layer_sep(calc_obj,db)
-
-        mean_energies = np.mean(energies,axis=0)
-        error_bars = np.std(energies,axis=0)
-        plt.errorbar(layer_sep,mean_energies-np.min(mean_energies),c=error_bars)
-        plt.xlabel(r"layer separation ($\AA$)")
-        plt.ylabel("Interlayer Energy (eV)")
-        plt.title("Interlayer Energies")
-        plt.savefig("interlayer_energies_tb_errorbar.png")
-
-
+        gsfe_layer_sep(calc_obj)
 

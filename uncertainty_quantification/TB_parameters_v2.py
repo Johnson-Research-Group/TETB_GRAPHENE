@@ -105,7 +105,7 @@ def popov_hopping(dR,params=None):
     b = 10.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
 
-    if not params:
+    if params is None:
         Cpp_sigma = np.array([0.1727212, -0.0937225, -0.0445544, 0.1114266,
                             -0.0978079, 0.0577363, -0.0262833, 0.0094388,
                                 -0.0024695, 0.0003863])
@@ -113,8 +113,8 @@ def popov_hopping(dR,params=None):
                             -0.0535682, 0.0181983, -0.0046855, 0.0007303,
                           0.0000225, -0.0000393])
     else:
-        Cpp_sigma = params[:,0]
-        Cpp_pi = params[:,1]
+        Cpp_sigma = params[0,:]
+        Cpp_pi = params[1,:]
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
 
@@ -148,7 +148,7 @@ def popov_overlap(dR,params=None):
     b = 10 #; %Angstrom
     y = (2*r-(b+aa))/(b-aa)
     #orignally sigma
-    if not params:
+    if params is None:
         Cpp_sigma=np.array([-0.0571487, -0.0291832, 0.1558650, -0.1665997,
                             0.0921727, -0.0268106, 0.0002240, 0.0040319,
                             -0.0022450, 0.0005596])
@@ -156,8 +156,8 @@ def popov_overlap(dR,params=None):
                             0.0156376, 0.0025976, -0.0039498, 0.0020581,
                             -0.0007114, 0.0001427])
     else:
-        Cpp_sigma = params[:,0]
-        Cpp_pi = params[:,1]
+        Cpp_sigma = params[0,:]
+        Cpp_pi = params[1,:]
 
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
@@ -339,7 +339,7 @@ def porezag_hopping(dR,params=None):
     aa = 1.0  # [Bohr radii]
     b = 7.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
-    if not params:
+    if params is None:
         Cpp_sigma = np.array([0.2422701, -0.1315258, -0.0372696, 0.0942352,
                             -0.0673216, 0.0316900, -0.0117293, 0.0033519, 
                             -0.0004838, -0.0000906])
@@ -347,8 +347,8 @@ def porezag_hopping(dR,params=None):
                         -0.0300733, 0.0074465, -0.0008563, -0.0004453, 
                         0.0003842, -0.0001855])
     else:
-        Cpp_sigma = params[:,0]
-        Cpp_pi = params[:,1]
+        Cpp_sigma = params[0,:]
+        Cpp_pi = params[1,:]
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
 
@@ -387,7 +387,7 @@ def porezag_overlap(dR,params=None):
     
     #overlap matrix coefficient (No units mentioned)
     #originally sigma
-    if not params:
+    if params is None:
         Cpp_sigma=np.array([-0.1359608, 0.0226235, 0.1406440, -0.1573794,
                                 0.0753818, -0.0108677, -0.0075444, 0.0051533,
                                 -0.0013747, 0.0000751])
@@ -395,8 +395,8 @@ def porezag_overlap(dR,params=None):
                                 0.0061645, 0.0051460, -0.0032776, 0.0009119,
                                 -0.0001265, -0.000227])
     else:
-        Cpp_sigma = params[:,0]
-        Cpp_pi = params[:,1]
+        Cpp_sigma = params[0,:]
+        Cpp_pi = params[1,:]
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
 

@@ -547,7 +547,7 @@ class TETB_GRAPHENE_Calc(Calculator):
                     cutoff = self.models_cutoff_interlayer[model_type["interlayer"]["hopping"]["model"]] * conversion
                     hopping_params = model_type["interlayer"]["hopping"]["params"]
                     if self.use_overlap:
-                        overlap_model = self.models_overlap_functions_intralayer[model_type["interlayer"]["overlap"]["model"]]
+                        overlap_model = self.models_overlap_functions_interlayer[model_type["interlayer"]["overlap"]["model"]]
                         overlap_params = model_type["interlayer"]["overlap"]["params"]
 
                 i, j = np.where((distances > 0.1)  & (distances < cutoff))
@@ -636,19 +636,19 @@ class TETB_GRAPHENE_Calc(Calculator):
             for j_int,j_type in enumerate(layer_type_set):
 
                 if i_type==j_type:
-                    hopping_model = self.models_functions_intralayer[model_type["intralayer"]["name"]]
-                    cutoff = self.models_cutoff_intralayer[model_type["intralayer"]["name"]] * conversion
-                    hopping_params = model_type["intralayer"]["hopping params"]
+                    hopping_model = self.models_hopping_functions_intralayer[model_type["intralayer"]["hopping"]["model"]]
+                    cutoff = self.models_cutoff_intralayer[model_type["intralayer"]["hopping"]["model"]] * conversion
+                    hopping_params = model_type["intralayer"]["hopping"]["params"]
                     if self.use_overlap:
-                        overlap_model = self.models_functions_intralayer[model_type["intralayer"]["name"]]
-                        overlap_params = model_type["intralayer"]["overlap params"]
+                        overlap_model = self.models_overlap_functions_intralayer[model_type["intralayer"]["overlap"]["model"]]
+                        overlap_params = model_type["intralayer"]["overlap"]["params"]
                 else:
-                    hopping_model = self.models_functions_interlayer[model_type["interlayer"]["name"]]
-                    cutoff = self.models_cutoff_interlayer[model_type["interlayer"]["name"]] * conversion
-                    hopping_params = model_type["interlayer"]["hopping params"]
+                    hopping_model = self.models_hopping_functions_interlayer[model_type["interlayer"]["hopping"]["model"]]
+                    cutoff = self.models_cutoff_interlayer[model_type["interlayer"]["hopping"]["model"]] * conversion
+                    hopping_params = model_type["interlayer"]["hopping"]["params"]
                     if self.use_overlap:
-                        overlap_model = self.models_functions_intralayer[model_type["interlayer"]["name"]]
-                        overlap_params = model_type["interlayer"]["overlap params"]
+                        overlap_model = self.models_overlap_functions_interlayer[model_type["interlayer"]["overlap"]["model"]]
+                        overlap_params = model_type["interlayer"]["overlap"]["params"]
 
                 indi, indj = np.where((distances > 0.1) & (distances < cutoff))
                 di = np.array(diFull)[indj]
