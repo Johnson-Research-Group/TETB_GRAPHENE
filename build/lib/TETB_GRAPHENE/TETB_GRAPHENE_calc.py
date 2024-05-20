@@ -21,22 +21,20 @@ from lammps import PyLammps
 import joblib
 from joblib import Parallel, delayed
 import TETB_GRAPHENE
-import scipy.linalg as spla
+from TETB_GRAPHENE.TETB_GRAPHENE_TB import *
 import dask
 from dask.distributed import Client, LocalCluster
-from scipy.spatial.distance import cdist
-from TB_parameters_v2 import *
-from time import time
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
 class TETB_GRAPHENE_Calc(Calculator):
     
     implemented_properties = ['energy','forces','potential_energy']
-    def __init__(self,model_dict=None,restart_file=None,use_overlap=True, **kwargs):
+    def __init__(self,model_dict=None,restart_file=None, **kwargs):
         """
         ase calculator object that calculates total energies and forces given a 
-        total energy tight binding model. can set kmesh to be either (1,1,1), (11,11,1) or (15,15,1).
+        total energy tight binding model. can kmesh to be either (1,1,1), (11,11,1) or (15,15,1), 
+        or tight binding model.
         Parameters:
         :param model_dict: (dict) dictionary containing info on tb model, number of kpoints, interatomic corrective potentials
                             defaults: {"tight binding parameters":None, (str) tight binding model
@@ -46,7 +44,6 @@ class TETB_GRAPHENE_Calc(Calculator):
                                         "parallel":serial, (str) type of parallelization to use in tb calculation
                                         "output":".", (str) optional output directory
                                         } 
-                            tight binding parameters keywords = {None,"popov"} **will default to classical potentials in tight binding parameters == None
                             parallel keywords = {"dask","joblib","serial"} **Note only dask can handle parallelization over multiple compute nodes
                             intralayer potential keywords = {REBO, Pz rebo} 
                             interlayer potential keywords = {kolmogorov crespi, Pz KC inspired} 
@@ -81,31 +78,6 @@ class TETB_GRAPHENE_Calc(Calculator):
             self.create_model(self.model_dict)
          
         self.pylammps_started = False
-        self.use_overlap = use_overlap
-
-        self.models_hopping_functions_interlayer = {'letb':letb_interlayer,
-                                    'mk':mk,
-                                    'popov':popov_hopping,
-                                    "nn":nn_hop}
-        self.models_overlap_functions_interlayer = {'popov':popov_overlap}
-        self.models_cutoff_interlayer={'letb':10,
-                                'mk':10,
-                                'popov':5.29,
-                                "nn":3}
-        self.models_self_energy = {'letb':0,
-                            'mk':0,
-                            'popov':-5.2887,
-                            "nn":0}
-        self.models_hopping_functions_intralayer = {'letb':letb_intralayer,
-                                        'mk':mk,
-                                        'porezag':porezag_hopping,
-                                        "nn":nn_hop}
-        self.models_overlap_functions_intralayer = {'porezag':porezag_overlap}
-        self.models_cutoff_intralayer={'letb':10,
-                                'mk':10,
-                                'porezag':3.7,
-                                "nn":4.4}
-
          
     def init_pylammps(self,atoms):
         """ create pylammps object and calculate corrective potential energy 
@@ -181,75 +153,37 @@ class TETB_GRAPHENE_Calc(Calculator):
         del self.L
         return forces,pe,pe+ke
     
-    def get_tb_forces(self,kpoints):
-        def func(i):
-            #get energy and force at a single kpoint from gpu
-            kpoint_slice = kpoints[i,:]
-            kpoint_slice = np.asarray(kpoint_slice)
-            recip_cell = self.get_recip_cell(self.cell)
-            
-            if kpoint_slice.shape == (3,):
-                kpoint_slice = kpoint_slice.reshape((1, 3))
-            
-            kpoint_slice = kpoint_slice @ recip_cell
-            nkp = kpoint_slice.shape[0]
-            natoms = self.positions.shape[0]
+    def get_tb_fxn(self,positions,atom_types,cell,kpoints,tbparams,calc_type="force"):
+        """select the tight binding calculation to perform.
+        :param positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
 
-            Energy = 0
-            Forces = np.zeros((natoms, 3), dtype=np.complex64)
-            for k in range(nkp):
-                Ham,Overlap = self.gen_ham_ovrlp(kpoint_slice[k,:])
-                if self.use_overlap:
-                    eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
-                else:
-                    eigvalues,eigvectors = np.linalg.eigh(Ham)
-                nocc = int(natoms / 2)
-                Energy += 2 * np.sum(eigvalues[:nocc])
-
-                Forces += self.get_hellman_feynman(eigvalues,eigvectors,kpoint_slice[k,:] )
-                return Energy,Forces
-        return func
-
-    
-    def get_tb_bands(self,positions,atom_types,cell,kpoints,tbparams):
-        """get band structure for a given system and path in kspace.
-         
-        :param atom_positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
-
-        :param mol_id: (np.ndarray [Natoms,]) atom types expressed as integers
+        :param atom_types: (np.ndarray [Natoms,]) atom types expressed as integers
 
         :param cell: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
 
         :param kpoints: (np.ndarray [number of kpoints,3]) array of kpoints to calculate tight binding calculation over
 
-        :param params_str: (str) specify which tight binding model to use
-        
-        :returns: (np.ndarray [Number of eigenvalues, number of kpoints])"""
-        def func(i):
-            kpoint_slice = kpoints[i,:]
-            atom_positions = np.asarray(positions)
-            cell = np.asarray(cell)
-            kpoint_slice = np.asarray(kpoint_slice)
-            mol_id = np.asarray(atom_types)
+        :param tbparams: (str) specify which tight binding model to use
 
-            recip_cell = self.get_recip_cell(cell)
-            if kpoint_slice.ndim == 1:
-                kpoint_slice = np.reshape(kpoint_slice, (1,3))
-            kpoint_slice = kpoint_slice @ recip_cell.T
-            natoms = atom_positions.shape[0]
-            nkp = kpoint_slice.shape[0]
-            evals = np.zeros((natoms, nkp))
-            evecs = np.zeros((natoms, natoms, nkp), dtype=np.complex64)
-            
-            for k in range(nkp):
-                Ham,Overlap = self.gen_ham_ovrlp(kpoint_slice[k,:])
-                if self.use_overlap:
-                    eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
-                else:
-                    eigvalues, eigvectors = np.linalg.eigh(Ham)
-                evals[:, k] = eigvalues
-                evecs[:, :, k] = eigvectors
-            return evals,evecs
+        :param calc_type: (str) type of tb calculation. options: force, force_fd (finite difference forces [slow]), bands"""
+        if calc_type=="force":
+            def func(i):
+                #get energy and force at a single kpoint from gpu
+                kpoint = kpoints[i,:]
+                energy,force = get_tb_forces_energy(positions,atom_types,cell,kpoint,tbparams)
+                return energy,force
+        elif calc_type=="force_fd":
+            def func(i):
+                #get energy and force at a single kpoint from gpu
+                kpoint = kpoints[i,:]
+                energy,force = get_tb_forces_energy_fd(positions,atom_types,cell,kpoint,tbparams)
+                return energy,force
+        elif calc_type=="bands":
+            def func(i):
+                #get energy and force at a single kpoint from gpu
+                kpoint = kpoints[i,:]
+                evals, evecs = calc_band_structure(positions, atom_types, cell, kpoint, tbparams)
+                return evals,evecs
         return func
     
     def reduce_bands(self,results,return_evecs=False):
@@ -283,11 +217,9 @@ class TETB_GRAPHENE_Calc(Calculator):
         :param atoms: (ase.atoms object) must have array "mol-id" specifying the tight binding types
         
         :returns: tuple(float, np.ndarray [number of atoms, 3]) tight binding energy, tight binding forces"""
-        self.positions = atoms.positions
-        self.atom_types = atoms.get_array("mol-id")
-        self.cell = atoms.get_cell()
-        if force_type == "force":
-            tb_fxn = self.get_tb_forces(self.kpoints)
+        sym = atoms.get_chemical_symbols()
+        mol_id = atoms.get_array("mol-id")
+        tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),self.kpoints,self.model_dict["tight binding parameters"],calc_type=force_type)
         tb_energy = 0
         tb_forces = np.zeros((atoms.get_global_number_of_atoms(),3))
         self.natoms = len(atoms)
@@ -306,6 +238,17 @@ class TETB_GRAPHENE_Calc(Calculator):
 
             client.shutdown()
             print("time for tight binding = ",end_time - start_time)
+            """
+            from dask.distributed import performance_report
+
+            ## some dask computation
+            scheduler_file = os.path.join(os.environ["SCRATCH"], "scheduler_file.json")
+
+            client = Client(scheduler_file=scheduler_file)
+            from dask import config
+            with dask.config.set({'distributed.scheduler.worker-ttl':"1000 minutes"}):
+                futures = client.map(tb_fxn, np.arange(self.nkp))
+                tb_energy, tb_forces  = client.submit(self.reduce_energy, futures).result()"""
 
         #serial
         elif self.parallel=="serial":
@@ -334,8 +277,8 @@ class TETB_GRAPHENE_Calc(Calculator):
         self.nkp = np.shape(kpoints)[0]
         sym = atoms.get_chemical_symbols()
         mol_id = atoms.get_array("mol-id")
-        tb_fxn = self.get_tb_bands(atoms.positions,mol_id,np.array(atoms.cell),
-                                 kpoints,self.model_dict["tight binding parameters"])
+        tb_fxn = self.get_tb_fxn(atoms.positions,mol_id,np.array(atoms.cell),
+                                 kpoints,self.model_dict["tight binding parameters"],calc_type="bands")
         self.natoms = len(atoms)
         evals = np.zeros((len(atoms),self.nkp))
         #evecs = np.zeros((len(atoms),len(atoms),self.nkp),dtype=np.complex64)
@@ -404,10 +347,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         using mpi and latte will result in ase optimizer to be used,
         else lammps runs relaxation """
 
-        model_dict={"tight binding parameters":{"interlayer":{"hopping":{"model":None,"parameters":None},
-                                                              "overlap":{"model":None,"parameters":None}},
-                                                "intralayer":{"hopping":{"model":None,"parameters":None},
-                                                              "overlap":{"model":None,"parameters":None}}},
+        model_dict={"tight binding parameters":None,
              "basis":None,
              "intralayer potential":None,
              "interlayer potential":None,
@@ -429,14 +369,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         else:
             use_tb=True
         self.use_tb = use_tb
-
-        if type(self.model_dict["intralayer potential"])==np.ndarray:
-            self.rebo_file = "CH_pz.rebo"
-            self.rebo_file+="_nkp"+str(self.nkp)
-            subprocess.call("cp "+os.path.join(self.param_root,self.rebo_file)+" .",shell=True)
-            self.write_rebo(self.model_dict["intralayer potential"],self.rebo_file)
-
-        elif self.model_dict["intralayer potential"] not in self.option_to_file.keys():
+        if self.model_dict["intralayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
             if os.path.exists(self.model_dict["intralayer potential"]):
                 self.rebo_file = self.model_dict["intralayer potential"]
@@ -451,12 +384,7 @@ class TETB_GRAPHENE_Calc(Calculator):
                         self.model_dict["intralayer potential"] = self.model_dict["intralayer potential"]+' nkp'+str(self.nkp)
                         self.rebo_file+="_nkp"+str(self.nkp)
 
-        if type(self.model_dict["interlayer potential"])==np.ndarray:
-            self.kc_file = "KC_insp_pz.txt"
-            self.kc_file+="_nkp"+str(self.nkp)
-            self.write_kcinsp(self.model_dict["interlayer potential"],self.kc_file)
-        
-        elif self.model_dict["interlayer potential"] not in self.option_to_file.keys():
+        if self.model_dict["interlayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
             if os.path.exists(self.model_dict["interlayer potential"]):
                 self.kc_file = self.model_dict["interlayer potential"]
@@ -485,259 +413,7 @@ class TETB_GRAPHENE_Calc(Calculator):
             self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
             self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
 
-    ################################################################################################################################
-            
-    # TB Utils
-            
-    ################################################################################################################################
-            
-    
-    def gen_ham_ovrlp(self, kpoint):
-        """
-        builds a hamiltonian and overlap matrix using distance dependent tight binding parameters
 
-        :params atom_positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
-
-        :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
-
-        :params cell: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
-
-        :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
-
-        :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
-
-        :returns: tuple(np.ndarray [Norbs,Norbs], np.ndarray [Norbs,Norbs]) Hamiltonian, Overlap        
-        """
-        
-        conversion = 1.0/.529177 #[bohr/angstrom] ASE is always in angstrom, while our package wants bohr
-        model_type = self.model_dict["tight binding parameters"]
-        lattice_vectors = np.asarray(self.cell)*conversion
-        atomic_basis = np.asarray(self.positions)*conversion
-        kpoint = np.asarray(kpoint)/conversion
-
-        layer_types = np.asarray(self.atom_types)
-        layer_type_set = set(layer_types)
-
-        natom = len(atomic_basis)
-        diFull = []
-        djFull = []
-        extended_coords = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, np.newaxis] * dx + lattice_vectors[1, np.newaxis] * dy)
-                diFull += [dx] * natom
-                djFull += [dy] * natom
-        distances = cdist(atomic_basis, extended_coords)
-        
-        Ham = self.models_self_energy[model_type["interlayer"]["hopping"]["model"]]*np.eye(natom,dtype=np.complex64)
-        if self.use_overlap:
-            Overlap = np.eye(natom,dtype=np.complex64)
-        else:
-            Overlap = np.empty((natom,natom))
-        for i_int,i_type in enumerate(layer_type_set):
-            for j_int,j_type in enumerate(layer_type_set):
-                if i_type==j_type:
-                    hopping_model = self.models_hopping_functions_intralayer[model_type["intralayer"]["hopping"]["model"]]
-                    cutoff = self.models_cutoff_intralayer[model_type["intralayer"]["hopping"]["model"]] * conversion
-                    hopping_params = model_type["intralayer"]["hopping"]["params"]
-                    if self.use_overlap:
-                        overlap_model = self.models_overlap_functions_intralayer[model_type["intralayer"]["overlap"]["model"]]
-                        overlap_params = model_type["intralayer"]["overlap"]["params"]
-                else:
-                    hopping_model = self.models_hopping_functions_interlayer[model_type["interlayer"]["hopping"]["model"]]
-                    cutoff = self.models_cutoff_interlayer[model_type["interlayer"]["hopping"]["model"]] * conversion
-                    hopping_params = model_type["interlayer"]["hopping"]["params"]
-                    if self.use_overlap:
-                        overlap_model = self.models_overlap_functions_interlayer[model_type["interlayer"]["overlap"]["model"]]
-                        overlap_params = model_type["interlayer"]["overlap"]["params"]
-
-                i, j = np.where((distances > 0.1)  & (distances < cutoff))
-                di = np.array(diFull)[j]
-                dj = np.array(djFull)[j]
-                i  = np.array(i)
-                j  = np.array(j % natom)
-                valid_indices = layer_types[i] == i_type
-                valid_indices &= layer_types[j] == j_type
-                valid_indices &= i!=j
-
-                disp = self.get_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
-                                            i[valid_indices], j[valid_indices])
-                phases = np.exp((1.0j)*np.dot(kpoint,disp.T))
-
-                hoppings = hopping_model(disp,params=hopping_params)/2  # Divide by 2 since we are double counting every pair
-                Ham[i[valid_indices],j[valid_indices]] += hoppings * phases
-                Ham[j[valid_indices],i[valid_indices]] += np.conj(hoppings*phases)
-                if self.use_overlap:
-                    overlap_elem = overlap_model(disp,params=overlap_params)/2
-                    Overlap[i[valid_indices],j[valid_indices]] +=   overlap_elem  * phases
-                    Overlap[j[valid_indices],i[valid_indices]] +=  np.conj(overlap_elem * phases) 
-
-        return Ham, Overlap
-
-    def get_hoppings(self,model=None,displacements=None):
-        if displacements:
-            hopping_model = self.models_hopping_functions_interlayer[model["hopping"]["model"]]
-            hopping_params = model["hopping"]["params"]
-            return hopping_model(displacements,parameters=hopping_params)
-        gamma = np.array([0,0,0])
-        Ham,_ = self.gen_ham_ovrlp(gamma)
-        i,j = np.where(Ham>0)
-        return Ham[i,j], i,j
-
-    def get_hellman_feynman(self, eigvals,eigvec, kpoint):
-        """Calculate Hellman-feynman forces for a given system. Uses finite differences to calculate matrix elements derivatives 
-        
-        :params atomic_basis: (np.ndarray [Natoms,3]) positions of atoms in angstroms
-
-        :params layer_types: (np.ndarray [Natoms,]) atom types expressed as integers
-
-        :params lattice_vectors: (np.ndarray [3,3]) cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
-
-        :params eigvals: (np.ndarray [natoms,]) band structure eigenvalues of system
-
-        :params eigvec: (np.ndarray [natoms,natoms]) eigenvectors of system
-
-        :params model_type: (str) specify which tight binding model to use. Options: [popov, mk]
-
-        :params kpoint: (np.ndarray [3,]) kpoint to build hamiltonian and overlap with
-
-        :returns: (np.ndarray [natoms,3]) tight binding forces on each atom"""
-        #get hellman_feynman forces at single kpoint. 
-        #dE/dR_i =  - Tr_i(rho_e *dS/dR_i + rho * dH/dR_i)
-        #construct density matrix
-        natoms = len(self.atom_types)
-        conversion = 1.0/.529177 # ASE is always in angstrom, while our package wants bohr
-        lattice_vectors = np.array(self.cell)*conversion
-        model_type = self.model_dict["tight binding parameters"]
-        atomic_basis = self.positions*conversion
-        nocc = natoms//2
-        fd_dist = 2*np.eye(natoms)
-        fd_dist[nocc:,nocc:] = 0
-        occ_eigvals = 2*np.diag(eigvals)
-        occ_eigvals[nocc:,nocc:] = 0
-        density_matrix =  eigvec @ fd_dist  @ np.conj(eigvec).T
-        energy_density_matrix = eigvec @ occ_eigvals @ np.conj(eigvec).T
-        tot_eng = 2 * np.sum(eigvals[:nocc])
-
-        Forces = np.zeros((natoms,3))
-        layer_type_set = set(self.atom_types)
-
-        diFull = []
-        djFull = []
-        extended_coords = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                extended_coords += list(atomic_basis[:, :] + lattice_vectors[0, np.newaxis] * dx + lattice_vectors[1, np.newaxis] * dy)
-                diFull += [dx] * natoms
-                djFull += [dy] * natoms
-        distances = cdist(atomic_basis, extended_coords)
-
-        gradH = np.zeros((len(diFull),natoms,3))
-        for i_int,i_type in enumerate(layer_type_set):
-            for j_int,j_type in enumerate(layer_type_set):
-
-                if i_type==j_type:
-                    hopping_model = self.models_hopping_functions_intralayer[model_type["intralayer"]["hopping"]["model"]]
-                    cutoff = self.models_cutoff_intralayer[model_type["intralayer"]["hopping"]["model"]] * conversion
-                    hopping_params = model_type["intralayer"]["hopping"]["params"]
-                    if self.use_overlap:
-                        overlap_model = self.models_overlap_functions_intralayer[model_type["intralayer"]["overlap"]["model"]]
-                        overlap_params = model_type["intralayer"]["overlap"]["params"]
-                else:
-                    hopping_model = self.models_hopping_functions_interlayer[model_type["interlayer"]["hopping"]["model"]]
-                    cutoff = self.models_cutoff_interlayer[model_type["interlayer"]["hopping"]["model"]] * conversion
-                    hopping_params = model_type["interlayer"]["hopping"]["params"]
-                    if self.use_overlap:
-                        overlap_model = self.models_overlap_functions_interlayer[model_type["interlayer"]["overlap"]["model"]]
-                        overlap_params = model_type["interlayer"]["overlap"]["params"]
-
-                indi, indj = np.where((distances > 0.1) & (distances < cutoff))
-                di = np.array(diFull)[indj]
-                dj = np.array(djFull)[indj]
-                i  = np.array(indi)
-                j  = np.array(indj % natoms)
-                valid_indices = self.atom_types[i] == i_type
-                valid_indices &= self.atom_types[j] == j_type
-                disp = self.get_disp(lattice_vectors, atomic_basis, di[valid_indices], dj[valid_indices],
-                                            i[valid_indices], j[valid_indices])
-                phases = np.exp((1.0j)*np.dot(kpoint,disp.T))
-
-                #check gradients of hoppings via finite difference
-                grad_hop = np.zeros_like(disp)
-                grad_overlap = np.zeros_like(disp)
-
-                delta = 1e-5
-                for dir_ind in range(3):
-                    dr = np.zeros(3)
-                    dr[dir_ind] +=  delta
-                    hop_up = hopping_model(disp+dr[np.newaxis,:],params=hopping_params)
-                    hop_dwn = hopping_model(disp-dr[np.newaxis,:],params=hopping_params)
-                    grad_hop[:,dir_ind] = (hop_up - hop_dwn)/2/delta
-
-                    overlap_up = overlap_model(disp+dr[np.newaxis,:],params=overlap_params)
-                    overlap_dwn = overlap_model(disp-dr[np.newaxis,:],params=overlap_params)
-
-                    grad_overlap[:,dir_ind] = (overlap_up - overlap_dwn)/2/delta
-
-                rho =  density_matrix[i[valid_indices],j[valid_indices]][:,np.newaxis] 
-                energy_rho = energy_density_matrix[i[valid_indices],j[valid_indices]][:,np.newaxis]
-                gradH = grad_hop * phases[:,np.newaxis] * rho
-                gradH += np.conj(gradH)
-                if self.use_overlap:
-                    Pulay =  grad_overlap * phases[:,np.newaxis] * energy_rho
-                    Pulay += np.conj(Pulay)
-
-                for atom_ind in range(natoms):
-                    use_ind = np.squeeze(np.where(i[valid_indices]==atom_ind))
-                    ave_gradH = gradH[use_ind,:]
-                    if self.use_overlap:
-                        ave_gradS = Pulay[use_ind,:] 
-                    if ave_gradH.ndim!=2:
-                        Forces[atom_ind,:] -= -ave_gradH.real 
-                        if self.use_overlap:
-                            Forces[atom_ind,:] -=   ave_gradS.real
-                    else:
-                        Forces[atom_ind,:] -= -np.sum(ave_gradH,axis=0).real 
-                        if self.use_overlap:
-                            Forces[atom_ind,:] -=   np.sum(ave_gradS,axis=0).real
-        return Forces * conversion
-
-    #################################################################################################################################
-            
-    # General Utils
-            
-    #################################################################################################################################
-
-    def get_disp(self,lattice_vectors, atomic_basis, di, dj, ai, aj):
-        """ 
-        Converts displacement indices to physical distances
-        Fang and Kaxiras, Phys. Rev. B 93, 235153 (2016)
-
-        dxy - Distance in Bohr, projected in the x/y plane
-        dz  - Distance in Bohr, projected onto the z axis
-        """
-        displacement_vector = di[:, np.newaxis] * lattice_vectors[0] +\
-                            dj[:, np.newaxis] * lattice_vectors[1] +\
-                            atomic_basis[aj] - atomic_basis[ai]
-        return displacement_vector
-    
-    def get_recip_cell(self,cell):
-        """find reciprocal cell given real space cell
-        :param cell: (np.ndarray [3,3]) real space cell of system where cell[i, j] is the jth Cartesian coordinate of the ith cell vector
-        
-        :returns: (np.ndarray [3,3]) reciprocal cell of system where recip_cell[i, j] is the jth Cartesian coordinate of the ith reciprocal cell vector"""
-        a1 = cell[:, 0]
-        a2 = cell[:, 1]
-        a3 = cell[:, 2]
-
-        volume = np.dot(a1, np.cross(a2, a3))
-
-        b1 = 2 * np.pi * np.cross(a2, a3) / volume
-        b2 = 2 * np.pi * np.cross(a3, a1) / volume
-        b3 = 2 * np.pi * np.cross(a1, a2) / volume
-
-        return np.array([b1, b2, b3])
-    
     def k_uniform_mesh(self,mesh_size):
         r""" 
         Returns a uniform grid of k-points that can be passed to
@@ -849,48 +525,3 @@ class TETB_GRAPHENE_Calc(Calculator):
            dk_[i] = np.linalg.norm(kvec[i,:]-kvec[i-1,:]) + dk_[i-1]
     
         return (kvec,dk_, knode)
-    
-    def write_kcinsp(self,params,kc_file):
-        """write kc inspired potential """
-        params = params[:9]
-        params = " ".join([str(x) for x in params])
-        headers = '               '.join(['', "delta","C","C0 ","C2","C4","z0","A6","A8","A10"])
-        with open(kc_file, 'w+') as f:
-            f.write("# Refined parameters for Kolmogorov-Crespi Potential with taper function\n\
-                    #\n# "+headers+"         S     rcut\nC C "+params+" 1.0    2.0")
-        
-
-    def check_keywords(self,string):
-        """check to see which keywords are in string """
-        keywords = ['Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2', 'BIJc_CC3','Beta_CC1', 
-                    'Beta_CC2','Beta_CC3']
-        
-        for k in keywords:
-            if k in string:
-                return True, k
-            
-        return False,k
-    
-    def write_rebo(self,params,rebo_file):
-        """write rebo potential given list of parameters. assumed order is
-        Q_CC , alpha_CC, A_CC, BIJc_CC1, BIJc_CC2 ,BIJc_CC3, Beta_CC1, Beta_CC2,Beta_CC3
-        
-        :param params: (list) list of rebo parameters
-        """
-        keywords = [ 'Q_CC' ,'alpha_CC', 'A_CC','BIJc_CC1', 'BIJc_CC2','BIJc_CC3', 'Beta_CC1', 
-                'Beta_CC2', 'Beta_CC3']
-        param_dict=dict(zip(keywords,params))
-        with open(rebo_file, 'r') as f:
-            lines = f.readlines()
-            new_lines=[]
-            for i,l in enumerate(lines):
-                
-                in_line,line_key = self.check_keywords(l)
-                
-                if in_line:
-                    nl = str(param_dict[line_key])+" "+line_key+" \n"
-                    new_lines.append(nl)
-                else:
-                    new_lines.append(l)
-        with open(rebo_file, 'w') as f:        
-            f.writelines(new_lines)
