@@ -575,7 +575,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         return Ham, Overlap
 
     def get_hoppings(self,model=None,displacements=None):
-        if displacements:
+        if displacements is not None:
             hopping_model = self.models_hopping_functions_interlayer[model["hopping"]["model"]]
             hopping_params = model["hopping"]["params"]
             return hopping_model(displacements,parameters=hopping_params)
@@ -632,7 +632,7 @@ class TETB_GRAPHENE_Calc(Calculator):
                 djFull += [dy] * natoms
         distances = cdist(atomic_basis, extended_coords)
 
-        gradH = np.zeros((len(diFull),natoms,3))
+        #gradH = np.zeros((len(diFull),natoms,3))
         for i_int,i_type in enumerate(layer_type_set):
             for j_int,j_type in enumerate(layer_type_set):
 
@@ -664,7 +664,8 @@ class TETB_GRAPHENE_Calc(Calculator):
 
                 #check gradients of hoppings via finite difference
                 grad_hop = np.zeros_like(disp)
-                grad_overlap = np.zeros_like(disp)
+                if self.use_overlap:
+                    grad_overlap = np.zeros_like(disp)
 
                 delta = 1e-5
                 for dir_ind in range(3):
@@ -674,10 +675,11 @@ class TETB_GRAPHENE_Calc(Calculator):
                     hop_dwn = hopping_model(disp-dr[np.newaxis,:],params=hopping_params)
                     grad_hop[:,dir_ind] = (hop_up - hop_dwn)/2/delta
 
-                    overlap_up = overlap_model(disp+dr[np.newaxis,:],params=overlap_params)
-                    overlap_dwn = overlap_model(disp-dr[np.newaxis,:],params=overlap_params)
+                    if self.use_overlap:
 
-                    grad_overlap[:,dir_ind] = (overlap_up - overlap_dwn)/2/delta
+                        overlap_up = overlap_model(disp+dr[np.newaxis,:],params=overlap_params)
+                        overlap_dwn = overlap_model(disp-dr[np.newaxis,:],params=overlap_params)
+                        grad_overlap[:,dir_ind] = (overlap_up - overlap_dwn)/2/delta
 
                 rho =  density_matrix[i[valid_indices],j[valid_indices]][:,np.newaxis] 
                 energy_rho = energy_density_matrix[i[valid_indices],j[valid_indices]][:,np.newaxis]

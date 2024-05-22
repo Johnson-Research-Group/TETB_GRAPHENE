@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import os
 from ase.lattice.hexagonal import Graphite
 from reformat_TETB_GRAPHENE_calc import TETB_GRAPHENE_Calc
+from TB_parameters_v2 import *
 import h5py
 import glob
 import ase.db
@@ -15,7 +16,7 @@ def hopping_training_data(hopping_type="interlayer"):
     #                       stdout=subprocess.PIPE).communicate()[0]
     # flist = flist.decode('utf-8').split("\n")[:-1]
     # flist = [dataset+x for x in flist]
-    flist = glob.glob('../../../bilayer_tight_binding/data/*.hdf5',recursive=True)
+    flist = glob.glob('../data/hoppings/*.hdf5',recursive=True)
     eV_per_hart=27.2114
     hoppings = np.zeros((1,1))
     disp_array = np.zeros((1,3))
@@ -64,28 +65,37 @@ def calc_Hessian(init_param_dict,interlayer_db,intralayer_db,interlayer_hopping_
             Hessian[i,j] = (f1-f2-f3+f4)/(4*dt*dt)
     return Hessian
 
-def calc_energy_error(calc,interlayer_energy_db,intralayer_energy_db,interlayer_hopping_data,intralayer_hopping_data):
+def calc_energy_error(calc,parameters,interlayer_energy_db,intralayer_energy_db,interlayer_hopping_data,intralayer_hopping_data):
+    intralayer_params = parameters[:9]
+    interlayer_params = parameters[9:18]
+    interlayer_hopping_params = parameters[18:38]
+    intralayer_hopping_params = parameters[38:]
     energy_rmse_array = []
     hopping_rmse_array=[]
     for row in interlayer_energy_db.select():
         atoms = interlayer_energy_db.get_atoms(id = row.id)
+        pos = atoms.positions
+        mean_z = np.mean(pos[:,2])
+        top_ind = np.where(pos[:,2]>mean_z)
+        mol_id = np.ones(len(atoms),dtype=np.int64)
+        mol_id[top_ind] = 2
+        atoms.set_array("mol-id",mol_id)
         atoms.calc = calc
         energy = atoms.get_potential_energy()
-        hoppings = atoms.get_hoppings()
-        energy_rmse_array.append(np.linalg.norm((energy-row.data.total_energy)/len(atoms))/row.data.total_energy)
+        energy_rmse_array = np.linalg.norm((energy-row.data.total_energy)/len(atoms))/row.data.total_energy
 
     for row in intralayer_energy_db.select():
         atoms = intralayer_energy_db.get_atoms(id = row.id)
+        atoms.set_array("mol-id",np.ones(len(atoms),dtype=np.int64))
         atoms.calc = calc
         energy = atoms.get_potential_energy()
-        hoppings = atoms.get_hoppings()
-        energy_rmse_array.append(np.linalg.norm((energy-row.data.total_energy)/len(atoms))/row.data.total_energy)
+        energy_rmse_array = np.append(energy_rmse_array,np.linalg.norm((energy-row.data.total_energy)/len(atoms))/row.data.total_energy)
     
-    hoppings = atoms.get_hoppings(interlayer_hopping_data["disp"],model="interlayer")
-    hopping_rmse_array.append(np.linalg.norm((hoppings-interlayer_hopping_data["hopping"]))/interlayer_hopping_data["hopping"])
+    hoppings = popov_hopping(interlayer_hopping_data["disp"],params=np.vstack((interlayer_hopping_params[:10],interlayer_hopping_params[10:])))
+    hopping_rmse_array = np.append(hopping_rmse_array,np.linalg.norm((hoppings-interlayer_hopping_data["hopping"]))/interlayer_hopping_data["hopping"])
 
-    hoppings = atoms.get_hoppings(intralayer_hopping_data["disp"],model="intralayer")
-    hopping_rmse_array.append(np.linalg.norm((hoppings-intralayer_hopping_data["hopping"]))/intralayer_hopping_data["hopping"])
+    hoppings = porezag_hopping(intralayer_hopping_data["disp"],params=np.vstack((intralayer_hopping_params[:10],intralayer_hopping_params[10:])))
+    hopping_rmse_array = np.append(hopping_rmse_array,np.linalg.norm((hoppings-intralayer_hopping_data["hopping"]))/intralayer_hopping_data["hopping"])
 
 
     return np.array(energy_rmse_array),np.array(hopping_rmse_array)
@@ -95,16 +105,20 @@ def get_Cost(parameters,interlayer_db,intralayer_db,interlayer_hopping_data,intr
     interlayer_params = parameters[9:18]
     interlayer_hopping_params = parameters[18:38]
     intralayer_hopping_params = parameters[38:]
-    model_dict = dict({"tight binding parameters":{"interlayer":{"name":"popov","hopping param":np.vstack((interlayer_hopping_params[:10],interlayer_hopping_params[10:]))},
-                                                "intralayer":{"name":"porezag","hopping param":np.vstack((intralayer_hopping_params[:10],intralayer_hopping_params[10:]))}}, 
+    model_dict = dict({"tight binding parameters":{
+                                                        "interlayer":{"hopping":{"model":"popov","params":np.vstack((interlayer_hopping_params[:10],interlayer_hopping_params[10:]))},
+                                                                     "overlap":{"model":"popov","params":None}},
+                                                        "intralayer":{"hopping":{"model":"porezag","params":np.vstack((intralayer_hopping_params[:10],intralayer_hopping_params[10:]))}},
+                                                              "overlap":{"model":"porezag","params":None}
+                                                              },
                         "basis":"pz",
                         "kmesh":kmesh,
                         "parallel":"joblib",
                         "intralayer potential":intralayer_params,
                         "interlayer potential":interlayer_params,
                         'output':"ensemble_cost_output"})
-    calc_obj = TETB_GRAPHENE_Calc(model_dict)
-    total_energy_error,hopping_error = calc_energy_error(calc_obj,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
+    calc_obj = TETB_GRAPHENE_Calc(model_dict,use_overlap=False)
+    total_energy_error,hopping_error = calc_energy_error(calc_obj,parameters,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
     cost = a*np.mean(total_energy_error) + b*np.mean(hopping_error)
     return cost
 
@@ -128,7 +142,7 @@ def generate_Ensemble(init_param_dict,Hessian,interlayer_db,intralayer_db,interl
             for j in range(n_params):
                 d_t[i] += np.real(np.sqrt(R/np.max(Hessian_eigvals[j],1)) * Hessian_eigvecs[i,j] * np.random.normal())
         
-        cost_t_next = get_Cost(ensemble_parameters[:,n_accept] + d_t,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
+        cost_t_next = get_Cost(ensemble_parameters[:,0] + d_t,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data) #n_accept
         accept_prob = np.exp(-(cost_t_next - prev_cost)/T_0)
         if cost_t_next < prev_cost or np.random.rand() < accept_prob:
             ensemble_parameters[:,n_accept+1] = ensemble_parameters[:,n_accept] + d_t
