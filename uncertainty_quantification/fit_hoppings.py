@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  
 import random
 
-def sk_hopping(dR,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
+def sk_hopping(disp,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
                pp1,pp2,pp3,pp4,pp5,pp6,pp7,pp8,pp9,pp10):
     """pairwise Slater Koster Interlayer hopping parameters for pz orbitals of carbon as parameterized by Popov, Van Alsenoy in
      "Low-frequency phonons of few-layer graphene within a tight-binding model". function is fully vectorized
@@ -17,6 +17,7 @@ def sk_hopping(dR,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
 
     :returns: (np.ndarray [N,]) Hamiltonian matrix elements [eV]
     """
+    dR = disp * 1.0/.529177  
     Cpp_sigma = np.array([sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10])
     Cpp_pi = np.array([pp1,pp2,pp3,pp4,pp5,pp6,pp7,pp8,pp9,pp10])
     dRn = np.linalg.norm(dR, axis=1)
@@ -29,7 +30,7 @@ def sk_hopping(dR,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
     r = np.linalg.norm(dR,axis=1)
     r = np.clip(r, 1, 10)
     aa = 1.0  # [Bohr radii]
-    b = 12.0  # [Bohr radii]
+    b = rcut #10.0  # [Bohr radii]
     y = (2.0 * r - (b + aa)) / (b - aa)
     Vpp_sigma =  np.polynomial.chebyshev.chebval(y, Cpp_sigma) 
     Vpp_pi =  np.polynomial.chebyshev.chebval(y, Cpp_pi) 
@@ -39,7 +40,7 @@ def sk_hopping(dR,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
     Vpp_pi -= Cpp_pi[0] / 2
     Ezz = n**2 * Vpp_sigma + (1 - n**2) * Vpp_pi
     valmat = Ezz
-    return valmat #*eV_per_hart
+    return valmat *eV_per_hart
 
 def hopping_training_data(hopping_type="interlayer"):
     data = []
@@ -47,7 +48,7 @@ def hopping_training_data(hopping_type="interlayer"):
     #                       stdout=subprocess.PIPE).communicate()[0]
     # flist = flist.decode('utf-8').split("\n")[:-1]
     # flist = [dataset+x for x in flist]
-    flist = glob.glob('../../../bilayer_tight_binding/data/*.hdf5',recursive=True)
+    flist = glob.glob('../data/hoppings/*.hdf5',recursive=True)
     eV_per_hart=27.2114
     hoppings = np.zeros((1,1))
     disp_array = np.zeros((1,3))
@@ -58,7 +59,7 @@ def hopping_training_data(hopping_type="interlayer"):
                 lattice_vectors = np.array(hdf['lattice_vectors'][:]) #* 1.88973
                 atomic_basis =    np.array(hdf['atomic_basis'][:])    #* 1.88973
                 tb_hamiltonian = hdf['tb_hamiltonian']
-                tij = np.array(tb_hamiltonian['tij'][:]) * eV_per_hart
+                tij = np.array(tb_hamiltonian['tij'][:]) #* eV_per_hart
                 di  = np.array(tb_hamiltonian['displacementi'][:])
                 dj  = np.array(tb_hamiltonian['displacementj'][:])
                 ai  = np.array(tb_hamiltonian['atomi'][:])
@@ -90,18 +91,21 @@ def fit_hoppings(dft_hoppings,disp_array):
 
 if __name__=="__main__":
     # fit interlayer parameters
+    rcut = 10
     interlayer_hoppings,interlayer_disp = hopping_training_data(hopping_type="interlayer")
     interlayer_params = fit_hoppings(interlayer_hoppings,interlayer_disp)
+    print(interlayer_params)
     Cpp_sigma_interlayer = interlayer_params[:10]
     Cpp_pi_interlayer = interlayer_params[10:]
+    #interlayer_params = np.array([0.1727212, -0.0937225, -0.0445544, 0.1114266,-0.0978079, 0.0577363, -0.0262833, 0.0094388,-0.0024695, 0.0003863, -0.3969243, 0.3477657, -0.2357499, 0.1257478,-0.0535682, 0.0181983, -0.0046855, 0.0007303,0.0000225, -0.0000393])
     [sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10] = interlayer_params[:10]
     [pp1,pp2,pp3,pp4,pp5,pp6,pp7,pp8,pp9,pp10] = interlayer_params[10:]
     interlayer_fit_hoppings = sk_hopping(interlayer_disp,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
                pp1,pp2,pp3,pp4,pp5,pp6,pp7,pp8,pp9,pp10)
 
-    plt.scatter(np.linalg.norm(interlayer_disp,axis=1),interlayer_hoppings,label="DFT")
-    plt.scatter(np.linalg.norm(interlayer_disp,axis=1),interlayer_fit_hoppings,label="SK")
-    plt.xlabel("distance (angstroms)")
+    plt.scatter(np.linalg.norm(interlayer_disp,axis=1) / .529177,interlayer_hoppings,label="DFT")
+    plt.scatter(np.linalg.norm(interlayer_disp,axis=1)/ .529177,interlayer_fit_hoppings,label="SK")
+    plt.xlabel("distance (bohr)")
     plt.ylabel("hoppings (eV)")
     plt.legend()
     plt.title("interlayer hoppings fit")
@@ -109,6 +113,7 @@ if __name__=="__main__":
     plt.clf()
 
     # fit intralayer parameters
+    rcut = 7
     intralayer_hoppings,intralayer_disp = hopping_training_data(hopping_type="intralayer")
     intralayer_params = fit_hoppings(intralayer_hoppings,intralayer_disp)
     Cpp_sigma_intralayer = intralayer_params[:10]

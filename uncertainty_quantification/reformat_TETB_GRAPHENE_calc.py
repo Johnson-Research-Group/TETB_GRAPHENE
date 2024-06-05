@@ -111,7 +111,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         """ create pylammps object and calculate corrective potential energy 
         """
         ntypes = len(set(atoms.get_chemical_symbols()))
-        data_file = os.path.join(self.output,"tegt.data")
+        data_file = "tegt.data"
         ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
         L = PyLammps(verbose=False)
         L.command("units		metal")
@@ -149,7 +149,6 @@ class TETB_GRAPHENE_Calc(Calculator):
             L.command("pair_coeff      * * "+self.rebo_file+" C")
 
         ####################################################################
-
         L.command("timestep 0.00025")
         L.command("thermo 1")
         L.command("fix 1 all nve")
@@ -158,6 +157,8 @@ class TETB_GRAPHENE_Calc(Calculator):
     def run_lammps(self,atoms):
         """ evaluate corrective potential energy, forces in lammps 
         """
+        cwd = os.getcwd()
+        os.chdir(self.output)
         if not atoms.has("mol-id"):
             mol_id = np.ones(len(atoms),dtype=np.int8)
             sym = atoms.get_chemical_symbols()
@@ -179,6 +180,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         for i in range(atoms.get_global_number_of_atoms()):
             forces[i,:] = self.L.atoms[i].force
         del self.L
+        os.chdir(cwd)
         return forces,pe,pe+ke
     
     def get_tb_forces(self,kpoints):
@@ -211,7 +213,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         return func
 
     
-    def get_tb_bands(self,positions,atom_types,cell,kpoints,tbparams):
+    def get_tb_bands(self,kpoints):
         """get band structure for a given system and path in kspace.
          
         :param atom_positions: (np.ndarray [Natoms,3]) positions of atoms in angstroms
@@ -227,16 +229,13 @@ class TETB_GRAPHENE_Calc(Calculator):
         :returns: (np.ndarray [Number of eigenvalues, number of kpoints])"""
         def func(i):
             kpoint_slice = kpoints[i,:]
-            atom_positions = np.asarray(positions)
-            cell = np.asarray(cell)
             kpoint_slice = np.asarray(kpoint_slice)
-            mol_id = np.asarray(atom_types)
 
-            recip_cell = self.get_recip_cell(cell)
+            recip_cell = self.get_recip_cell(self.cell)
             if kpoint_slice.ndim == 1:
                 kpoint_slice = np.reshape(kpoint_slice, (1,3))
             kpoint_slice = kpoint_slice @ recip_cell.T
-            natoms = atom_positions.shape[0]
+            natoms = self.positions.shape[0]
             nkp = kpoint_slice.shape[0]
             evals = np.zeros((natoms, nkp))
             evecs = np.zeros((natoms, natoms, nkp), dtype=np.complex64)
@@ -332,10 +331,11 @@ class TETB_GRAPHENE_Calc(Calculator):
         
         :returns: (np.ndarray [Number of eigenvalues, number of kpoints])"""
         self.nkp = np.shape(kpoints)[0]
-        sym = atoms.get_chemical_symbols()
-        mol_id = atoms.get_array("mol-id")
-        tb_fxn = self.get_tb_bands(atoms.positions,mol_id,np.array(atoms.cell),
-                                 kpoints,self.model_dict["tight binding parameters"])
+        self.positions = atoms.positions
+        self.atom_types = atoms.get_array("mol-id")
+        self.cell = atoms.get_cell()
+        #positions,atom_types,cell,kpoints,tbparams
+        tb_fxn = self.get_tb_bands(kpoints)
         self.natoms = len(atoms)
         evals = np.zeros((len(atoms),self.nkp))
         #evecs = np.zeros((len(atoms),len(atoms),self.nkp),dtype=np.complex64)
@@ -369,7 +369,6 @@ class TETB_GRAPHENE_Calc(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        
         if self.use_tb:
             print("getting forces and energies")
             tb_Energy,tb_forces = self.run_tight_binding(atoms)
@@ -389,7 +388,7 @@ class TETB_GRAPHENE_Calc(Calculator):
             self.results['potential_energy'] = self.Lammps_potential_energy
             self.results['energy'] = self.Lammps_tot_energy
             print("Potential Energy = ",( self.Lammps_potential_energy)/len(atoms)," (eV/atom)")
-
+        
         ase.io.write(os.path.join(self.model_dict["output"],"restart.traj"),atoms)
 
     def run(self,atoms):
@@ -424,6 +423,8 @@ class TETB_GRAPHENE_Calc(Calculator):
         self.nkp = np.shape(self.kpoints)[0]
         self.norbs_per_atoms = orbs_basis[self.model_dict["basis"]]
         self.parallel = model_dict["parallel"]
+        self.output = self.model_dict["output"]
+
         if not self.model_dict["tight binding parameters"]:
             use_tb=False
         else:
@@ -431,10 +432,12 @@ class TETB_GRAPHENE_Calc(Calculator):
         self.use_tb = use_tb
 
         if type(self.model_dict["intralayer potential"])==np.ndarray:
+            if not os.path.exists(self.output):
+                os.mkdir(self.output)
             self.rebo_file = "CH_pz.rebo"
             self.rebo_file+="_nkp"+str(self.nkp)
-            subprocess.call("cp "+os.path.join(self.param_root,self.rebo_file)+" .",shell=True)
-            self.write_rebo(self.model_dict["intralayer potential"],self.rebo_file)
+            subprocess.call("cp "+os.path.join(self.param_root,self.rebo_file)+" "+self.output,shell=True)
+            self.write_rebo(self.model_dict["intralayer potential"],os.path.join(self.output,self.rebo_file))
 
         elif self.model_dict["intralayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
@@ -454,7 +457,9 @@ class TETB_GRAPHENE_Calc(Calculator):
         if type(self.model_dict["interlayer potential"])==np.ndarray:
             self.kc_file = "KC_insp_pz.txt"
             self.kc_file+="_nkp"+str(self.nkp)
-            self.write_kcinsp(self.model_dict["interlayer potential"],self.kc_file)
+            if not os.path.exists(self.output):
+                os.mkdir(self.output)
+            self.write_kcinsp(self.model_dict["interlayer potential"],os.path.join(self.output,self.kc_file))
         
         elif self.model_dict["interlayer potential"] not in self.option_to_file.keys():
             #can give file path to potential file in dictionary
@@ -475,15 +480,14 @@ class TETB_GRAPHENE_Calc(Calculator):
             self.kc_file = os.path.join(self.param_root,self.option_to_file["kolmogorov crespi"])
             self.rebo_file = os.path.join(self.param_root,self.option_to_file["Rebo"])
 
-        self.output = self.model_dict["output"]
         if self.output!=".":
             if not os.path.exists(self.output):
                 os.mkdir(self.output)
             #call parameter files from a specified directory, necessary for fitting
             subprocess.call("cp "+self.rebo_file+" "+self.output,shell=True)
             subprocess.call("cp "+self.kc_file+" "+self.output,shell=True)
-            self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
-            self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
+            #self.rebo_file = os.path.join(self.output,self.rebo_file.split("/")[-1])
+            #self.kc_file = os.path.join(self.output,self.kc_file.split("/")[-1])
 
     ################################################################################################################################
             
@@ -610,6 +614,7 @@ class TETB_GRAPHENE_Calc(Calculator):
         lattice_vectors = np.array(self.cell)*conversion
         model_type = self.model_dict["tight binding parameters"]
         atomic_basis = self.positions*conversion
+        kpoint = np.asarray(kpoint)/conversion
         nocc = natoms//2
         fd_dist = 2*np.eye(natoms)
         fd_dist[nocc:,nocc:] = 0

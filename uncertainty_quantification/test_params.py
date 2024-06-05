@@ -8,7 +8,7 @@ import subprocess
 import os
 import lammps_logfile
 from ase.lattice.hexagonal import Graphite
-import reformat_TETB_GRAPHENE_calc
+from reformat_TETB_GRAPHENE_calc import TETB_GRAPHENE_Calc
 import pandas as pd
 from ase.build import make_supercell
 def get_atom_pairs(n,a):
@@ -149,7 +149,7 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
         
     # make an PDF figure of a plot
     fig.tight_layout()
-    ax.set_ylim(-erange,erange)
+    #ax.set_ylim(-erange,erange)
     fig.savefig(figname)
     plt.clf()
 
@@ -206,33 +206,47 @@ def gsfe_layer_sep(calc):
  
 if __name__=="__main__":
     test_tbforces=False
-    test_tbenergy=False
+    test_tbenergy=True
     test_lammps=False
     test_bands=False
-    vary_params = True
+    vary_params = False
     theta = 21.78
     #theta = 5.09
      
-    popov_hopping_params = np.array([[0.1727212, -0.0937225, -0.0445544, 0.1114266,-0.0978079, 0.0577363, -0.0262833, 0.0094388,-0.0024695, 0.0003863],
-                                     [-0.3969243, 0.3477657, -0.2357499, 0.1257478,-0.0535682, 0.0181983, -0.0046855, 0.0007303,0.0000225, -0.0000393]])
+    popov_hopping_params = np.array([0.1727212, -0.0937225, -0.0445544, 0.1114266,-0.0978079, 0.0577363, -0.0262833, 0.0094388,-0.0024695, 0.0003863, -0.3969243, 0.3477657, -0.2357499, 0.1257478,-0.0535682, 0.0181983, -0.0046855, 0.0007303,0.0000225, -0.0000393])
     popov_ovrlp_params = np.array([[-0.0571487, -0.0291832, 0.1558650, -0.1665997,0.0921727, -0.0268106, 0.0002240, 0.0040319,-0.0022450, 0.0005596],
                           [0.3797305, -0.3199876, 0.1897988, -0.0754124,0.0156376, 0.0025976, -0.0039498, 0.0020581,-0.0007114, 0.0001427]])
 
-    porezag_hopping_params = np.array([[0.2422701, -0.1315258, -0.0372696, 0.0942352,-0.0673216, 0.0316900, -0.0117293, 0.0033519, -0.0004838, -0.0000906],
-                              [-0.3793837, 0.3204470, -0.1956799, 0.0883986,-0.0300733, 0.0074465, -0.0008563, -0.0004453, 0.0003842, -0.0001855]])
+    porezag_hopping_params = np.array([0.2422701, -0.1315258, -0.0372696, 0.0942352,-0.0673216, 0.0316900, -0.0117293, 0.0033519, -0.0004838, -0.0000906,
+        -0.3793837, 0.3204470, -0.1956799, 0.0883986,-0.0300733, 0.0074465, -0.0008563, -0.0004453, 0.0003842, -0.0001855])
     porezag_ovrlp_params=np.array([[-0.1359608, 0.0226235, 0.1406440, -0.1573794,0.0753818, -0.0108677, -0.0075444, 0.0051533,-0.0013747, 0.0000751],
                 [0.3715732, -0.3070867, 0.1707304, -0.0581555,0.0061645, 0.0051460, -0.0032776, 0.0009119,-0.0001265, -0.000227]])
-    print(popov_hopping_params[:,0])
-    model_dict = dict({"tight binding parameters":{"interlayer":{"name":"popov","hopping param":popov_hopping_params,"overlap param":popov_ovrlp_params},
-                                                   "intralayer":{"name":"porezag","hopping param":porezag_hopping_params,"overlap param":porezag_ovrlp_params }}, 
-                          "basis":"pz",
-                          "kmesh":(1,1,1),
-                          "parallel":"joblib",
-                          "intralayer potential":"Pz rebo",
-                          "interlayer potential":"Pz KC inspired",
-                          'output':"theta_21_78"})
+   
     
-    #calc_obj = reformat_TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
+    
+    intralayer_potential = np.array([0.34563531369329037,4.6244265008884184,11865.392552302139,14522.273379352482,7.855493960028371,40.609282094464604,
+        4.62769509546907,0.7945927858501145,2.2242248220983427])
+    interlayer_potential = np.array([16.34956726725497, 86.0913106836395, 66.90833163067475, 24.51352633628406, -103.18388323245665,
+        1.8220964068356134, -2.537215908290726, 18.177497643244706, 2.762780721646056])
+    hopping_params = np.load("tb_params.npz") 
+    interlayer_hopping_params = np.append(hopping_params["Cpp_sigma_interlayer"],hopping_params["Cpp_pi_interlayer"])
+    print("popov ",popov_hopping_params)
+    print("interlayer ",interlayer_hopping_params)
+    intralayer_hopping_params = np.append(hopping_params["Cpp_sigma_intralayer"],hopping_params["Cpp_pi_intralayer"])
+
+    model_dict = dict({"tight binding parameters":{"interlayer":{"hopping":
+        {"model":"popov","params":np.vstack((interlayer_hopping_params[:10],interlayer_hopping_params[10:])),"rcut":10},
+        "overlap":{"model":"popov","params":None}},
+        "intralayer":{"hopping":{"model":"porezag","params":np.vstack((intralayer_hopping_params[:10],intralayer_hopping_params[10:])),"rcut":7}},
+        "overlap":{"model":"porezag","params":None}},
+        "basis":"pz",
+        "kmesh":(11,11,1),
+        "parallel":"joblib",
+        "intralayer potential":intralayer_potential,
+        "interlayer potential":interlayer_potential,
+        'output':"test_output"})
+    
+    calc_obj = TETB_GRAPHENE_Calc(model_dict,use_overlap=False)
     csfont = {'fontname':'serif',"size":20} 
     if test_tbforces:
         #test forces pairwise

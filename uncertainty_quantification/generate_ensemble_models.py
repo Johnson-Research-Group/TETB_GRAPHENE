@@ -10,7 +10,9 @@ import h5py
 import glob
 import ase.db
 import argparse
-
+from datetime import datetime
+import subprocess
+import time
 def hopping_training_data(hopping_type="interlayer"):
     data = []
     flist = glob.glob('../data/hoppings/*.hdf5',recursive=True)
@@ -43,30 +45,53 @@ def hopping_training_data(hopping_type="interlayer"):
         type_ind = np.where(disp_array[:,2] < 1)
     return {"hopping":hoppings[type_ind],"disp":disp_array[type_ind]}
 
-def calc_Hessian(init_param_dict,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,indi = None, indj=None,output_file=None,dt=1e-2):
-    
+def calc_Hessian(init_param_dict,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,indi = None, indj=None,output_file=None,dt=1e-3):
+     
     init_param = np.append(init_param_dict["intralayer potential"],init_param_dict["interlayer potential"])
     init_param = np.append(init_param,init_param_dict["interlayer hoppings"])
     init_param = np.append(init_param,init_param_dict["intralayer hoppings"])
     n_params = len(init_param)
+    #step size is dt (0.01%) of minimium cost parameters
+    dt_array = np.abs(init_param) * dt
     if indi is None:
         indi = np.arange(n_params)
     if indj is None:
-        indi = np.arange(n_params)
+        indj = np.arange(n_params)
     Hessian = np.zeros((n_params,n_params))
+    check_matches=False
+    if output_file is not None:
+        if os.path.exists(output_file):
+            hessian_data = np.loadtxt(output_file)
+            if np.ndim(hessian_data)<2:
+                new_hessian_data = np.zeros((3,1))
+                new_hessian_data[:,0] = hessian_data
+                hessian_data = new_hessian_data
+            indices = hessian_data[:,1:]
+            check_matches=True
+            
+
     for i in indi:
         for j in indj:
+            if check_matches:
+                #check if Hessian element has already been calculated
+                matches = np.all(indices == np.array([i,j]) ,axis=1)
+                if np.any(matches):
+                    continue
+
             ei = np.zeros(n_params)
             ei[i] = 1
             ej = np.zeros(n_params)
             ej[j] = 1
-            f1 = get_Cost(init_param + dt * ei + dt * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
-            f2 = get_Cost(init_param + dt * ei - dt * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
-            f3 = get_Cost(init_param - dt * ei + dt * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
-            f4 = get_Cost(init_param - dt * ei - dt * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
-            Hessian_elem = (f1-f2-f3+f4)/(4*dt*dt)
+            f1 = get_Cost(init_param + dt_array * ei + dt_array * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
+            f2 = get_Cost(init_param + dt_array * ei - dt_array * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
+            f3 = get_Cost(init_param - dt_array * ei + dt_array * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
+            f4 = get_Cost(init_param - dt_array * ei - dt_array * ej,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
+
+            print(np.sum(dt_array*ei)*np.sum(dt_array*ej))
+            Hessian_elem = (f1-f2-f3+f4)/(4*np.sum(dt_array*ei)*np.sum(dt_array*ej))
+            print("writing Hessian to file ",Hessian_elem,i,j)
             if output_file is not None:
-                with open(output_file,"w+") as f:
+                with open(output_file,"a+") as f:
                     f.write(str(Hessian_elem)+"  "+str(i)+"  "+str(j)+"\n")
             Hessian[i,j] = Hessian_elem
     return Hessian
@@ -107,10 +132,12 @@ def calc_energy_error(calc,parameters,interlayer_energy_db,intralayer_energy_db,
     return np.array(energy_rmse_array),np.array(hopping_rmse_array)
 
 def get_Cost(parameters,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,a=0.5,b=0.5,kmesh = (11,11,1)):
+    start = time.time()
     intralayer_params = parameters[:9]
     interlayer_params = parameters[9:18]
     interlayer_hopping_params = parameters[18:38]
     intralayer_hopping_params = parameters[38:]
+    hash_name = str(hash(datetime.now()) )
     model_dict = dict({"tight binding parameters":{
                                                         "interlayer":{"hopping":{"model":"popov","params":np.vstack((interlayer_hopping_params[:10],interlayer_hopping_params[10:]))},
                                                                      "overlap":{"model":"popov","params":None}},
@@ -122,13 +149,16 @@ def get_Cost(parameters,interlayer_db,intralayer_db,interlayer_hopping_data,intr
                         "parallel":"joblib",
                         "intralayer potential":intralayer_params,
                         "interlayer potential":interlayer_params,
-                        'output':"ensemble_cost_output"})
+                        'output':"ensemble_cost_output_"+hash_name})
     calc_obj = TETB_GRAPHENE_Calc(model_dict,use_overlap=False)
     total_energy_error,hopping_error = calc_energy_error(calc_obj,parameters,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
     cost = a*np.mean(total_energy_error) + b*np.mean(hopping_error)
+    subprocess.call("rm -rf ensemble_cost_output_"+hash_name,shell=True)
+    end = time.time()
+    print("Time to evaluate cost function = ",end-start)
     return cost
 
-def generate_Ensemble(init_param_dict,Hessian,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,Nensembles=500,R=1):
+def generate_Ensemble(init_param_dict,Hessian,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,Nensembles=150,R=1,output_file=None):
     """init_param are params of model that minimize the cost """
     init_param = np.append(init_param_dict["intralayer potential"],init_param_dict["interlayer potential"])
     init_param = np.append(init_param,init_param_dict["interlayer hoppings"])
@@ -140,19 +170,36 @@ def generate_Ensemble(init_param_dict,Hessian,interlayer_db,intralayer_db,interl
     cost_array[0] = get_Cost(init_param,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data) 
     T_0 = 2*cost_array[0]/n_params
     Hessian_eigvals, Hessian_eigvecs = np.linalg.eig(Hessian)
-    n_accept=1
-    while n_accept < Nensembles:
-        prev_cost = cost_array[n_accept-1]
+    Hessian_eigvals = np.real(Hessian_eigvals)
+    Hessian_eigvecs = np.real(Hessian_eigvecs)
+    n_accept=0
+    n_steps = 0
+    R = 1
+    dt = 1e-2
+    std = dt * np.abs(init_param)
+    while n_accept < Nensembles - 1:
+        prev_cost = cost_array[n_accept]
         d_t = np.zeros(n_params)
         for i in range(n_params):
             for j in range(n_params):
-                d_t[i] += np.real(np.sqrt(R/np.max(Hessian_eigvals[j],1)) * Hessian_eigvecs[i,j] * np.random.normal())
+                d_t[i] += np.sqrt(R/np.max([Hessian_eigvals[j],1])) * Hessian_eigvecs[i,j] * np.random.normal(scale=std[i])
         
-        cost_t_next = get_Cost(ensemble_parameters[:,0] + d_t,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data) #n_accept
+        cost_t_next = get_Cost(ensemble_parameters[:,n_accept] + d_t,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data)
         accept_prob = np.exp(-(cost_t_next - prev_cost)/T_0)
+        print("Cost Next, prev cost ",cost_t_next,prev_cost)
+        print("accept prob ",accept_prob)
         if cost_t_next < prev_cost or np.random.rand() < accept_prob:
             ensemble_parameters[:,n_accept+1] = ensemble_parameters[:,n_accept] + d_t
+            cost_array[n_accept+1] = cost_t_next
+            print("writing Ensemble to file ")
+            if output_file is not None:
+                ensemble_str = np.array2string(ensemble_parameters[:,n_accept+1], separator=' ', formatter={'float': lambda x: f'{x}'}).replace('[', '').replace(']', '')
+                with open(output_file,"a+") as f:
+                    f.write(ensemble_str+"\n")
             n_accept +=1
+        n_steps+=1
+        if n_steps%1==0:
+            print("step "+str(n_steps)+",acceptance ratio = ",np.round(n_accept/n_steps,decimals=4))
 
     return ensemble_parameters
 
@@ -184,19 +231,19 @@ if __name__=="__main__":
     init_params.update({"intralayer hoppings":intralayer_hoppings})
     if args.mode=="Hessian":
         
-        indi,indj = np.meshgrid((np.arange(n_params),np.arange(n_params)))
         Hessian = calc_Hessian(init_params,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,
-                               indi = indi[int(args.i),:], indj=indj,output_file=args.output)
+                               indi = np.array([int(args.index)]), indj=None,output_file=args.output)
         #np.savez("hessian",Hessian=Hessian)
 
     elif args.mode=="ensemble":
-        Hessian_data = np.loadtxt(args.output)
-        indi = Hessian_data[:,1]
-        indj = Hessian_data[:,2]
-        Hessian = np.zeros((n_params,n_params))
-        Hessian[indi,indj] = Hessian_data[:,0]
+        #Hessian_data = np.loadtxt(args.output)
+        #indi = Hessian_data[:,1]
+        #indj = Hessian_data[:,2]
+        #Hessian = np.zeros((n_params,n_params))
+        #Hessian[indi,indj] = Hessian_data[:,0]
+        Hessian = np.load("Hessian.npz")["Hessian"]
         
-        ensemble_parameters = generate_Ensemble(init_params,Hessian,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,Nensembles=500,R=1)
-        np.savez("ensemble_parameters",ensemble_parameters=ensemble_parameters)
+        ensemble_parameters = generate_Ensemble(init_params,Hessian,interlayer_db,intralayer_db,interlayer_hopping_data,intralayer_hopping_data,Nensembles=150,R=1,output_file = args.output)
+        #np.savez("ensemble_parameters",ensemble_parameters=ensemble_parameters)
     
 
