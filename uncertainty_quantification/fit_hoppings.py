@@ -113,13 +113,14 @@ if __name__=="__main__":
     plt.clf()
 
     # fit intralayer parameters
-    rcut = 7
+    rcut = 10
     intralayer_hoppings,intralayer_disp = hopping_training_data(hopping_type="intralayer")
     intralayer_params = fit_hoppings(intralayer_hoppings,intralayer_disp)
     Cpp_sigma_intralayer = intralayer_params[:10]
     Cpp_pi_intralayer = intralayer_params[10:]
     [sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10] = intralayer_params[:10]
     [pp1,pp2,pp3,pp4,pp5,pp6,pp7,pp8,pp9,pp10] = intralayer_params[10:]
+    print("intralayer params ",intralayer_params)
     intralayer_fit_hoppings = sk_hopping(intralayer_disp,sp1,sp2,sp3,sp4,sp5,sp6,sp7,sp8,sp9,sp10,
                pp1,pp2,pp3,pp4,pp5,pp6,pp7,pp8,pp9,pp10)
 
