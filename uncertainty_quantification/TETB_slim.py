@@ -68,7 +68,8 @@ class TETB_slim(Calculator):
         os.chdir(cwd)
 
 
-    def get_tb_energy(self):
+    def get_tb_energy(self,atoms):
+        self.get_disp(atoms)
         tb_energy = 0
         nocc = self.natoms//2
         intra_hoppings,inter_hoppings =  self.get_hoppings()
@@ -92,7 +93,11 @@ class TETB_slim(Calculator):
     def get_residual_energy(self,atoms):
         cwd = os.getcwd()
         os.chdir(self.output)
-        forces,residual_pe,residual_energy = run_lammps(atoms,self.kc_file,self.rebo_file)
+        if type(atoms)==ase.Atoms:
+            forces,residual_pe,residual_energy = run_lammps(atoms,self.kc_file,self.rebo_file)
+        elif type(atoms)==list or type(atoms)==str:
+            #this will calculate energy of all atoms in one shot
+            residual_pe = run_lammps_loop(atoms,self.kc_file,self.rebo_file)
         os.chdir(cwd)
         return residual_pe
     
@@ -126,9 +131,8 @@ class TETB_slim(Calculator):
             mol_id = np.ones(len(atoms),dtype=np.int64)
             mol_id[top_ind] = 2
             atoms.set_array("mol-id",mol_id)
-        self.get_disp(atoms)
 
-        return self.get_tb_energy() #+ self.get_residual_energy(atoms)
+        return  self.get_residual_energy(atoms) + self.get_tb_energy(atoms) 
 
 
     ##############################################################################################
