@@ -7,6 +7,7 @@ from kliff.uq import MCMC, get_T0, autocorr, mser, rhat
 from kliff.loss import Loss
 from TETB_MODEL_KLIFF import TETB_KLIFF_Model
 from schwimmbad import MPIPool
+from multiprocessing import Pool
 import numpy as np
 import subprocess
 import time
@@ -136,7 +137,7 @@ if __name__=="__main__":
     hopping_data = {"interlayer":interlayer_hopping_data,"intralayer":intralayer_hopping_data}
     loss = LossTETBModel(
         calculator,
-        nprocs=3,
+        nprocs=1,
         hopping_data = hopping_data
     )
 
@@ -158,8 +159,9 @@ if __name__=="__main__":
     for ii, bound in enumerate(bounds):
         p0[:, :, ii] = np.random.uniform(*bound, (ntemps, nwalkers))
     #sampler.pool = MPIPool()
+    samples.pool = Pool(60)
     sampler.run_mcmc(p0, iterations)
-    #sampler.pool.close() 
+    sampler.pool.close() 
 
     # Retrieve the chain
     chain = sampler.chain
