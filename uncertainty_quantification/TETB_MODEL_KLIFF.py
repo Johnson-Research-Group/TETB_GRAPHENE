@@ -24,7 +24,7 @@ class TETBComputeArguments(ComputeArguments):
         supported_species: Dict[str, int],
         influence_distance: float,
         compute_energy: bool = True,
-        compute_forces: bool = True,
+        compute_forces: bool = False,
         compute_stress: bool = False,
     ):
         if supported_species is None:
@@ -60,11 +60,10 @@ class TETBComputeArguments(ComputeArguments):
         coords = self.conf.coords
         species = self.conf.species
         cell = self.conf.cell
-        p_list = np.array([params[p]._value for p in params])
-        calc = TETB_slim(parameters=p_list)
+
         if self.compute_energy:
             atoms = Atoms(positions=coords,cell=cell)
-            self.results["energy"] = calc.get_total_energy(atoms) #energy
+            self.results["energy"] = self.tetb_calc.get_total_energy(atoms) #energy
         """if self.compute_forces:
             forces = assemble_forces(
                 forces_including_padding, len(coords), self.neigh.padding_image
@@ -163,11 +162,6 @@ class TETB_KLIFF_Model(Model):
         for i in range(len(self.intralayer_hopping_params)):
             model_params.update({"intralayer_hopping_params_"+str(i):Parameter(value=[self.intralayer_hopping_params[i] for _ in range(n)])})
         
-        """model_params = {
-            "epsilon": Parameter(value=[1.0 for _ in range(n)]),
-            "sigma": Parameter(value=[2.0 for _ in range(n)]),
-            "cutoff": Parameter(value=[5.0 for _ in range(n)]),
-        }"""
 
         return model_params
 

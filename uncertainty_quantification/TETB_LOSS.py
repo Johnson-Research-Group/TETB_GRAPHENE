@@ -10,161 +10,19 @@ from kliff.calculators.calculator import Calculator, _WrapperCalculator
 from kliff.calculators.calculator_torch import CalculatorTorch
 from kliff.dataset.weight import Weight
 from kliff.error import report_import_error
+from kliff.dataset.dataset import Configuration
+from kliff.models.model import ComputeArguments, Model
+from kliff.models.parameter import Parameter
+from kliff.models.parameter_transform import ParameterTransform
+from kliff.neighbor import NeighborList, assemble_forces, assemble_stress
+from kliff.loss import Loss
+from ase import Atoms
+from datetime import datetime
+from TETB_slim import TETB_slim
+import subprocess
 import time
+import ase.io
 
-try:
-    import torch
-
-    torch_avail = True
-except ImportError:
-    torch_avail = False
-
-try:
-    from mpi4py import MPI
-
-    mpi4py_avail = True
-except ImportError:
-    mpi4py_avail = False
-
-try:
-    from geodesicLM import geodesiclm
-
-    geodesicLM_avail = True
-except ImportError:
-    geodesicLM_avail = False
-
-def energy_forces_residual(
-    identifier: str,
-    natoms: int,
-    weight: Weight,
-    prediction: np.array,
-    reference: np.array,
-    data: Dict[str, Any],
-):
-    """
-    A residual function using both energy and forces.
-
-    The residual is computed as
-
-    .. code-block::
-
-       weight.config_weight * wi * (prediction - reference)
-
-    where ``wi`` can be ``weight.energy_weight`` or ``weight.forces_weight``, depending
-    on the property.
-
-    Args:
-        identifier: (unique) identifier of the configuration for which to compute the
-            residual. This is useful when you want to weigh some configuration
-            differently.
-        natoms: number of atoms in the configuration
-        weight: an instance that computes the weight of the configuration in the loss
-            function.
-        prediction: prediction computed by calculator, 1D array
-        reference: references data for the prediction, 1D array
-        data: additional data for calculating the residual. Supported key value
-            pairs are:
-            - normalize_by_atoms: bool (default: True)
-            If ``normalize_by_atoms`` is ``True``, the residual is divided by the number
-            of atoms in the configuration.
-
-    Returns:
-        1D array of the residual
-
-    Note:
-        The length of `prediction` and `reference` (call it `S`) are the same, and it
-        depends on `use_energy` and `use_forces` in Calculator. Assume the
-        configuration contains of `N` atoms.
-
-        1. If `use_energy == True` and `use_forces == False`, then `S = 1`.
-        `prediction[0]` is the potential energy computed by the calculator, and
-        `reference[0]` is the reference energy.
-
-        2. If `use_energy == False` and `use_forces == True`, then `S = 3N`.
-        `prediction[3*i+0]`, `prediction[3*i+1]`, and `prediction[3*i+2]` are the
-        x, y, and z component of the forces on atom i in the configuration, respectively.
-        Correspondingly, `reference` is the 3N concatenated reference forces.
-
-        3. If `use_energy == True` and `use_forces == True`, then `S = 3N + 1`.
-        `prediction[0]` is the potential energy computed by the calculator, and
-        `reference[0]` is the reference energy.
-        `prediction[3*i+1]`, `prediction[3*i+2]`, and `prediction[3*i+3]` are the
-        x, y, and z component of the forces on atom i in the configuration, respectively.
-        Correspondingly, `reference` is the 3N concatenated reference forces.
-    """
-
-    # extract up the weight information
-    config_weight = weight.config_weight
-    energy_weight = weight.energy_weight
-    forces_weight = weight.forces_weight
-
-    # obtain residual and properly normalize it
-    residual = config_weight * (prediction - reference)
-    residual[0] *= energy_weight
-    residual[1:] *= forces_weight
-
-    if data["normalize_by_natoms"]:
-        residual /= natoms
-
-    return residual
-
-
-def energy_residual(
-    identifier: str,
-    natoms: int,
-    weight: Weight,
-    prediction: np.array,
-    reference: np.array,
-    data: Dict[str, Any],
-):
-    """
-    A residual function using just the energy.
-
-    See the documentation of :meth:`energy_forces_residual` for the meaning of the
-    arguments.
-    """
-
-    # extract up the weight information
-    config_weight = weight.config_weight
-    energy_weight = weight.energy_weight
-
-    # obtain residual and properly normalize it
-    residual = config_weight * energy_weight * (prediction - reference)
-
-    if data["normalize_by_natoms"]:
-        residual /= natoms
-
-    return residual
-
-
-def forces_residual(
-    identifier: str,
-    natoms: int,
-    weight: Weight,
-    prediction: np.array,
-    reference: np.array,
-    data: Dict[str, Any],
-):
-    """
-    A residual function using just the forces.
-
-    See the documentation of :meth:`energy_forces_residual` for the meaning of the
-    arguments.
-    """
-
-    # extract up the weight information
-    config_weight = weight.config_weight
-    forces_weight = weight.forces_weight
-
-    # obtain residual and properly normalize it
-    residual = config_weight * forces_weight * (prediction - reference)
-
-    if data["normalize_by_natoms"]:
-        residual /= natoms
-
-    return residual
-
-        
 class LossTETBModel:
     """
     Loss function class to optimize the physics-based potential parameters.
@@ -184,310 +42,46 @@ class LossTETBModel:
             }
             See the documentation of :meth:`energy_forces_residual` for more.
     """
-
-    scipy_minimize_methods = [
-        "Nelder-Mead",
-        "Powell",
-        "CG",
-        "BFGS",
-        "Newton-CG",
-        "L-BFGS-B",
-        "TNC",
-        "COBYLA",
-        "SLSQP",
-        "trust-constr",
-        "dogleg",
-        "trust-ncg",
-        "trust-exact",
-        "trust-krylov",
-    ]
-    scipy_minimize_methods_not_supported_args = ["bounds"]
-    scipy_least_squares_methods = ["trf", "dogbox", "lm", "geodesiclm"]
-    scipy_least_squares_methods_not_supported_args = ["bounds"]
-
-    def __init__(
-        self,
-        calculator: Calculator,
-        nprocs: int = 1,
-        residual_fn: Optional[Callable] = None,
-        residual_data: Optional[Dict[str, Any]] = None,
-        hopping_data:Optional[Dict[str,Any]] = None,
-    ):
-        default_residual_data = {
-            "normalize_by_natoms": True,
-        }
-
-        residual_data = _check_residual_data(residual_data, default_residual_data)
-
-        self.calculator = calculator
-        self.nprocs = nprocs
-
-        self.residual_data = residual_data
+    def __init__(self,atoms,hopping_data:Optional[Dict[str,Any]] = None, data_file_dir = "TETB_data_files", opt_params=None):
+        self.data_file_dir = os.path.join(os.getcwd(),data_file_dir)
+        if not os.path.exists(self.data_file_dir):
+            os.mkdir(self.data_file_dir)
+            self.write_data_files(atoms)
+        self.atoms = atoms
         self.interlayer_hopping_data = hopping_data["interlayer"]
         self.intralayer_hopping_data = hopping_data["intralayer"]
+        self.ref_energy = []
+        for a in atoms:
+            self.ref_energy.append(a.total_energy)
+        self.ref_energy = np.array(self.ref_energy)
+        self.calculator = TETBcalculator(opt_params)
 
-        if residual_fn is None:
-            if isinstance(self.calculator, _WrapperCalculator):
-                self.calc_list = self.calculator.get_calculator_list()
-                self.residual_fn = []
-                for calculator in self.calc_list:
-                    if calculator.use_energy and calculator.use_forces:
-                        residual_fn = energy_forces_residual
-                    elif calculator.use_energy:
-                        residual_fn = energy_residual
-                    elif calculator.use_forces:
-                        residual_fn = forces_residual
-                    else:
-                        raise RuntimeError("Calculator does not use energy or forces.")
-                    self.residual_fn.append(residual_fn)
-            else:
-                if calculator.use_energy and calculator.use_forces:
-                    residual_fn = energy_forces_residual
-                elif calculator.use_energy:
-                    residual_fn = energy_residual
-                elif calculator.use_forces:
-                    residual_fn = forces_residual
-                else:
-                    raise RuntimeError("Calculator does not use energy or forces.")
-                self.residual_fn = residual_fn
-        else:
-            # TODO this will not work for _WrapperCalculator
-            self.residual_fn = residual_fn
+    def write_data_files(self,atoms):
+        for i,a in enumerate(atoms):
+            ase.io.write(os.path.join(self.data_file_dir,"tegt.data_"+str(i+1)),a,format="lammps-data",atom_style = "full")
 
-        logger.debug(f"`{self.__class__.__name__}` instantiated.")
-
-    def minimize(self, method: str = "L-BFGS-B", **kwargs):
-        """
-        Minimize the loss.
-
-        Args:
-            method: minimization methods as specified at:
-                https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html
-                https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
-
-            kwargs: extra keyword arguments that can be used by the scipy optimizer
-        """
-        kwargs = self._adjust_kwargs(method, **kwargs)
-
-        logger.info(f"Start minimization using method: {method}.")
-        result = self._scipy_optimize(method, **kwargs)
-        logger.info(f"Finish minimization using method: {method}.")
-
-        # update final optimized parameters
-        self.calculator.update_model_params(result.x)
-
-        return result
-
-    def _adjust_kwargs(self, method, **kwargs):
-        """
-        Check kwargs and adjust them as necessary.
-        """
-
-        if method in self.scipy_least_squares_methods:
-            # check support status
-            for i in self.scipy_least_squares_methods_not_supported_args:
-                if i in kwargs:
-                    raise LossError(
-                        f"Argument `{i}` should not be set via the `minimize` method. "
-                        "It it set internally."
-                    )
-
-            # adjust bounds
-            if self.calculator.has_opt_params_bounds():
-                if method in ["trf", "dogbox"]:
-                    bounds = self.calculator.get_opt_params_bounds()
-                    lb = [b[0] if b[0] is not None else -np.inf for b in bounds]
-                    ub = [b[1] if b[1] is not None else np.inf for b in bounds]
-                    bounds = (lb, ub)
-                    kwargs["bounds"] = bounds
-                else:
-                    raise LossError(f"Method `{method}` cannot handle bounds.")
-
-        elif method in self.scipy_minimize_methods:
-            # check support status
-            for i in self.scipy_minimize_methods_not_supported_args:
-                if i in kwargs:
-                    raise LossError(
-                        f"Argument `{i}` should not be set via the `minimize` method. "
-                        "It it set internally."
-                    )
-
-            # adjust bounds
-            if isinstance(self.calculator, _WrapperCalculator):
-                calculators = self.calculator.calculators
-            else:
-                calculators = [self.calculator]
-            for calc in calculators:
-                if calc.has_opt_params_bounds():
-                    if method in ["L-BFGS-B", "TNC", "SLSQP"]:
-                        bounds = self.calculator.get_opt_params_bounds()
-                        kwargs["bounds"] = bounds
-                    else:
-                        raise LossError(f"Method `{method}` cannot handle bounds.")
-        else:
-            raise LossError(f"Minimization method `{method}` not supported.")
-
-        return kwargs
-
-    def _scipy_optimize(self, method, **kwargs):
-        """
-        Minimize the loss use scipy.optimize.least_squares or scipy.optimize.minimize
-        methods. A user should not call this function, but should call the ``minimize``
-        method.
-        """
-
-        size = parallel.get_MPI_world_size()
-
-        if size > 1:
-            comm = MPI.COMM_WORLD
-            rank = comm.Get_rank()
-            logger.info(f"Running in MPI mode with {size} processes.")
-
-            if self.nprocs > 1:
-                logger.warning(
-                    f"Argument `nprocs = {self.nprocs}` provided at initialization is "
-                    f"ignored. When running in MPI mode, the number of processes "
-                    f"provided along with the `mpiexec` (or `mpirun`) command is used."
-                )
-
-            x = self.calculator.get_opt_params()
-            if method in self.scipy_least_squares_methods:
-                # geodesic LM
-                if method == "geodesiclm":
-                    if not geodesicLM_avail:
-                        report_import_error("geodesiclm")
-                    else:
-                        minimize_fn = geodesiclm
-                else:
-                    minimize_fn = scipy.optimize.least_squares
-                func = self._get_residual_MPI
-
-            elif method in self.scipy_minimize_methods:
-                minimize_fn = scipy.optimize.minimize
-                func = self._get_loss_MPI
-
-            if rank == 0:
-                result = minimize_fn(func, x, method=method, **kwargs)
-                # notify other process to break func
-                break_flag = True
-                for i in range(1, size):
-                    comm.send(break_flag, dest=i, tag=i)
-            else:
-                func(x)
-                result = None
-
-            result = comm.bcast(result, root=0)
-
-            return result
-
-        else:
-            # 1. running MPI with 1 process
-            # 2. running without MPI at all
-            # both cases are regarded as running without MPI
-
-            if self.nprocs == 1:
-                logger.info("Running in serial mode.")
-            else:
-                logger.info(
-                    f"Running in multiprocessing mode with {self.nprocs} processes."
-                )
-
-                # Maybe one thinks he is using MPI because nprocs is used
-                if mpi4py_avail:
-                    logger.warning(
-                        "`mpi4py` detected. If you try to run in MPI mode, you should "
-                        "execute your code via `mpiexec` (or `mpirun`). If not, ignore "
-                        "this message."
-                    )
-
-            x = self.calculator.get_opt_params()
-            if method in self.scipy_least_squares_methods:
-                if method == "geodesiclm":
-                    if not geodesicLM_avail:
-                        report_import_error("geodesiclm")
-                    else:
-                        minimize_fn = geodesiclm
-                else:
-                    minimize_fn = scipy.optimize.least_squares
-
-                func = self._get_residual
-            elif method in self.scipy_minimize_methods:
-                minimize_fn = scipy.optimize.minimize
-                func = self._get_loss
-
-            result = minimize_fn(func, x, method=method, **kwargs)
-            return result
-
-    def _get_residual(self, x):
-        """
-        Compute the residual in serial or multiprocessing mode.
-
-        This is a callable for optimizing method in scipy.optimize.least_squares,
-        which is passed as the first positional argument.
-
-        Args:
-            x: optimizing parameter values, 1D array
-        """
-
-        # publish params x to predictor
-        self.calculator.update_model_params(x)
-
-        cas = self.calculator.get_compute_arguments()
-
-        # TODO the if else could be combined
-        if isinstance(self.calculator, _WrapperCalculator):
-            X = zip(cas, self.calc_list, self.residual_fn)
-            if self.nprocs > 1:
-                residuals = parallel.parmap2(
-                    self._get_residual_single_config,
-                    X,
-                    self.residual_data,
-                    nprocs=self.nprocs,
-                    tuple_X=True,
-                )
-                residual = np.concatenate(residuals)
-            else:
-                residual = []
-                for ca, calculator, residual_fn in X:
-                    current_residual = self._get_residual_single_config(
-                        ca, calculator, residual_fn, self.residual_data
-                    )
-                    residual = np.concatenate((residual, current_residual))
-
-        else:
-            if self.nprocs > 1:
-                residuals = parallel.parmap2(
-                    self._get_residual_single_config,
-                    cas,
-                    self.calculator,
-                    self.residual_fn,
-                    self.residual_data,
-                    nprocs=self.nprocs,
-                    tuple_X=False,
-                )
-                residual = np.concatenate(residuals)
-            else:
-                residual = []
-                for ca in cas:
-                    current_residual = self._get_residual_single_config(
-                        ca, self.calculator, self.residual_fn, self.residual_data
-                    )
-                    residual = np.concatenate((residual, current_residual))
-
-        return residual
+    def get_tb_energies(self,calc):
+        tb_energy = []
+        for i,a in enumerate(self.atoms):
+            tmp_energy = calc.get_tb_energy(a)
+            tb_energy.append(tmp_energy)
+        return np.array(tb_energy)
 
     def _get_loss(self, x):
-        """
-        Compute the loss in serial or multiprocessing mode.
-
-        This is a callable for optimizing method in scipy.optimize.minimize,
-        which is passed as the first positional argument.
-
-        Args:
-            x: 1D array, optimizing parameter values
-        """
         start = time.time()
-        residual = self._get_residual(x)
+        #only write parameter files once per set of parameters
+        #calculate tb energy and residual energy
+        self.output = "TETB_output_"+ str(hash(datetime.now()) )
+        param_list = np.array([np.squeeze(x[p].value) for p in x])[1:]
+        calc = TETB_slim(parameters=param_list,output = self.output)
+        tb_energies = self.get_tb_energies(calc)
+        #calculate residual energy of all structures stored in self.data_file_dir
+        lammps_energies = calc.get_residual_energy(self.data_file_dir)
+        subprocess.call("rm -rf "+self.output,shell=True)
+
+        predicted_energies = tb_energies + lammps_energies
+        residual = (predicted_energies - self.ref_energy)/self.ref_energy
+
         energy_loss = 0.5 * np.linalg.norm(residual) ** 2
         
         #these evaluations of hopping parameterizations are very quick
@@ -503,114 +97,68 @@ class LossTETBModel:
         end = time.time()
         print("time for loss function = ",end-start)
         return loss
-
-    def _get_residual_MPI(self, x):
-        def residual_my_chunk(x):
-            # broadcast parameters
-            x = comm.bcast(x, root=0)
-            # publish params x to predictor
-            self.calculator.update_model_params(x)
-
-            residual = []
-            for ca in cas:
-                current_residual = self._get_residual_single_config(
-                    ca, self.calculator, self.residual_fn, self.residual_data
-                )
-                residual.extend(current_residual)
-            return residual
-
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-        size = comm.Get_size()
-
-        # get my chunk of data
-        cas = self._split_data()
-
-        while True:
-            if rank == 0:
-                break_flag = False
-                for i in range(1, size):
-                    comm.send(break_flag, dest=i, tag=i)
-                residual = residual_my_chunk(x)
-                all_residuals = comm.gather(residual, root=0)
-                return np.concatenate(all_residuals)
-            else:
-                break_flag = comm.recv(source=0, tag=rank)
-                if break_flag:
-                    break
-                else:
-                    residual = residual_my_chunk(x)
-                    all_residuals = comm.gather(residual, root=0)
-
-    def _get_loss_MPI(self, x):
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-
-        residual = self._get_residual_MPI(x)
-        if rank == 0:
-            loss = 0.5 * np.linalg.norm(residual) ** 2
-        else:
-            loss = None
-
-        return loss
-
-    # NOTE this function can be called only once, no need to call it each time
-    # _get_residual_MPI is called
-    def _split_data(self):
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-        size = comm.Get_size()
-
-        # get a portion of data based on rank
-        cas = self.calculator.get_compute_arguments()
-        # random.shuffle(cas)
-
-        rank_size = len(cas) // size
-        # last rank deal with the case where len(cas) cannot evenly divide size
-        if rank == size - 1:
-            cas = cas[rank_size * rank :]
-        else:
-            cas = cas[rank_size * rank : rank_size * (rank + 1)]
-
-        return cas
-
-    @staticmethod
-    def _get_residual_single_config(ca, calculator, residual_fn, residual_data):
-        # prediction data
-        calculator.compute(ca)
-        pred = calculator.get_prediction(ca)
-
-        # reference data
-        ref = calculator.get_reference(ca)
-
-        conf = ca.conf
-        identifier = conf.identifier
-        weight = conf.weight
-        natoms = conf.get_num_atoms()
-
-        residual = residual_fn(identifier, natoms, weight, pred, ref, residual_data)
-
-        return residual
     
-def _check_residual_data(data: Dict[str, Any], default: Dict[str, Any]):
-    """
-    Check whether user provided residual data is valid, and add default values if not
-    provided.
-    """
-    if data is not None:
-        for key, value in data.items():
-            if key not in default:
-                raise LossError(
-                    f"Expect the keys of `residual_data` to be one or combinations of "
-                    f"{', '.join(default.keys())}; got {key}. "
-                )
-            else:
-                default[key] = value
+class TETBcalculator:
+    def __init__(self,params=None):
+        self.species=None
+        if params is None:
+            self.rebo_params = np.array([0.34563531369329037,4.6244265008884184,11865.392552302139,14522.273379352482,7.855493960028371,
+                                    40.609282094464604,4.62769509546907,0.7945927858501145,2.2242248220983427])
+            self.kc_params = np.array([16.34956726725497, 86.0913106836395, 66.90833163067475, 24.51352633628406, -103.18388323245665,
+                                    1.8220964068356134, -2.537215908290726, 18.177497643244706, 2.762780721646056])
+            self.interlayer_hopping_params = np.array([0.1727212, -0.0937225, -0.0445544, 0.1114266,-0.0978079, 0.0577363, -0.0262833, 0.0094388,
+                                                    -0.0024695, 0.0003863, -0.3969243, 0.3477657, -0.2357499, 0.1257478,-0.0535682, 0.0181983,
+                                                        -0.0046855, 0.0007303,0.0000225, -0.0000393])
+            self.intralayer_hopping_params = np.array([0.2422701, -0.1315258, -0.0372696, 0.0942352,-0.0673216, 0.0316900, -0.0117293, 0.0033519,
+                                                        -0.0004838, -0.0000906,-0.3793837, 0.3204470, -0.1956799, 0.0883986,-0.0300733, 0.0074465,
+                                                        -0.0008563, -0.0004453, 0.0003842, -0.0001855])
+        else:
+            self.rebo_params = params[:9]
+            self.kc_params = params[9:18]
+            self.interlayer_hopping_params = params[18:38]
+            self.intralayer_hopping_params = params[38:]
+        self.init_model_params()
 
-    return default
+    def init_model_params(self):
+        n = self._get_num_params()
+        self.model_params = {"cutoff": Parameter(value=[10.0*0.529 for _ in range(n)])}
+        
+        for i in range(len(self.rebo_params)):
+            self.model_params.update({"rebo_"+str(i):Parameter(value=[self.rebo_params[i] for _ in range(n)])})
 
-class LossError(Exception):
-    def __init__(self, msg):
-        super(LossError, self).__init__(msg)
-        self.msg = msg
+        for i in range(len(self.kc_params)):
+            self.model_params.update({"kc_"+str(i):Parameter(value=[self.kc_params[i] for _ in range(n)])})
 
+        for i in range(len(self.interlayer_hopping_params)):
+            self.model_params.update({"interlayer_hopping_params_"+str(i):Parameter(value=[self.interlayer_hopping_params[i] for _ in range(n)])})
+
+        for i in range(len(self.intralayer_hopping_params)):
+            self.model_params.update({"intralayer_hopping_params_"+str(i):Parameter(value=[self.intralayer_hopping_params[i] for _ in range(n)])})
+        
+
+        return self.model_params
+
+    def _get_num_params(self):
+        if self.species is None:
+            n = 1
+        else:
+            n = len(self.species)
+
+        return (n + 1) * n // 2
+    
+    def get_opt_params(self):
+        return self.model_params
+    
+    def get_num_opt_params(self):
+        return len(self.model_params)
+    
+    def get_opt_params_bounds(self):
+        bounds = []
+        for idx in self._index:
+            name = idx.name
+            c_idx = idx.c_idx
+            lower = self.model_params[name].lower_bound[c_idx]
+            upper = self.model_params[name].upper_bound[c_idx]
+            bounds.append([lower, upper])
+
+        return bounds
