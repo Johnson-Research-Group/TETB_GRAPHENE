@@ -6,6 +6,7 @@ from kliff.models.parameter_transform import LogParameterTransform
 from kliff.uq import MCMC, get_T0, autocorr, mser, rhat
 from kliff.loss import Loss
 from TETB_MODEL_KLIFF import TETB_KLIFF_Model
+from BLG_MODEL_KLIFF import BLG_Classical
 from schwimmbad import MPIPool
 from multiprocessing import Pool
 import numpy as np
@@ -90,56 +91,82 @@ if __name__=="__main__":
     $ mpiexec -np <num_mpi_workers> ${MPIEXEC_OPTIONS} python script.py
     """
     #define minimal cost model parameters
-    rebo_params = np.array([0.34563531369329037,4.6244265008884184,11865.392552302139,14522.273379352482,7.855493960028371,
-                                     40.609282094464604,4.62769509546907,0.7945927858501145,2.2242248220983427])
-    kc_params = np.array([16.34956726725497, 86.0913106836395, 66.90833163067475, 24.51352633628406, -103.18388323245665,
-                                1.8220964068356134, -2.537215908290726, 18.177497643244706, 2.762780721646056])
-    interlayer_hopping_params = np.array([ 4.62415396e2, -4.22834050e2,  3.22270789e2, -2.02691943e2,
-                                                1.03208453e2, -4.11606173e1,  1.21273048e1, -2.35299265,
-                                                2.24178295e-1,  1.10566332e-3, -3.22265467e3,  2.98387007e3,
-                                                -2.36272805e3,  1.58772585e3, -8.92804822e2,  4.10627608e2,
-                                                -1.48945048e2,  4.00880789e1, -7.13860895,  6.32335807e-1])
-    intralayer_hopping_params = np.array([-4.57851739,  4.59235008, -4.27957960,  3.16018980,
-                                                -1.47269151,  5.53506664e-2,  5.35176772e-1, -4.55102674e-1,
-                                                1.90353133e-1, -3.61357631e-2,  3.21965395e-1, -3.20369211e-1,
-                                                3.07308402e-1, -2.73762090e-1,  2.19274986e-1, -1.52570366e-1,
-                                                8.31541600e-2, -2.69722311e-2,  2.66753556e-4,  2.31876604e-3])
-    opt_params = {}
-    for i in range(len(rebo_params)):
-        opt_params.update({"rebo_"+str(i):[[rebo_params[i],"-INF","INF"]]})
-
-    for i in range(len(kc_params)):
-        opt_params.update({"kc_"+str(i):[[kc_params[i],"-INF","INF"]]})
-
-    for i in range(len(interlayer_hopping_params)):
-        opt_params.update({"interlayer_hopping_params_"+str(i):[[interlayer_hopping_params[i],"-INF","INF"]]})
-
-    for i in range(len(intralayer_hopping_params)):
-        opt_params.update({"intralayer_hopping_params_"+str(i):[[intralayer_hopping_params[i],"-INF","INF"]]})
+    use_model = "classical" #"classical"
 
     nkp = 121
     interlayer_db =  ase.db.connect('../data/bilayer_nkp'+str(nkp)+'.db')
     intralayer_db = db = ase.db.connect('../data/monolayer_nkp'+str(nkp)+'.db')
     configs = create_Dataset(interlayer_db,intralayer_db)
 
-    interlayer_hopping_data = hopping_training_data(hopping_type="interlayer")
-    intralayer_hopping_data = hopping_training_data(hopping_type="intralayer")
-    p0 = np.append(rebo_params,kc_params)
-    p0= np.append(p0,interlayer_hopping_params)
-    p0 = np.append(0,intralayer_hopping_params)
+    if use_model=="TETB":
+        rebo_params = np.array([0.34563531369329037,4.6244265008884184,11865.392552302139,14522.273379352482,7.855493960028371,
+                                        40.609282094464604,4.62769509546907,0.7945927858501145,2.2242248220983427])
+        kc_params = np.array([16.34956726725497, 86.0913106836395, 66.90833163067475, 24.51352633628406, -103.18388323245665,
+                                    1.8220964068356134, -2.537215908290726, 18.177497643244706, 2.762780721646056])
+        interlayer_hopping_params = np.array([ 4.62415396e2, -4.22834050e2,  3.22270789e2, -2.02691943e2,
+                                                    1.03208453e2, -4.11606173e1,  1.21273048e1, -2.35299265,
+                                                    2.24178295e-1,  1.10566332e-3, -3.22265467e3,  2.98387007e3,
+                                                    -2.36272805e3,  1.58772585e3, -8.92804822e2,  4.10627608e2,
+                                                    -1.48945048e2,  4.00880789e1, -7.13860895,  6.32335807e-1])
+        intralayer_hopping_params = np.array([-4.57851739,  4.59235008, -4.27957960,  3.16018980,
+                                                    -1.47269151,  5.53506664e-2,  5.35176772e-1, -4.55102674e-1,
+                                                    1.90353133e-1, -3.61357631e-2,  3.21965395e-1, -3.20369211e-1,
+                                                    3.07308402e-1, -2.73762090e-1,  2.19274986e-1, -1.52570366e-1,
+                                                    8.31541600e-2, -2.69722311e-2,  2.66753556e-4,  2.31876604e-3])
+        opt_params = {}
+        for i in range(len(rebo_params)):
+            opt_params.update({"rebo_"+str(i):[[rebo_params[i],"-INF","INF"]]})
 
-    model = TETB_KLIFF_Model()
+        for i in range(len(kc_params)):
+            opt_params.update({"kc_"+str(i):[[kc_params[i],"-INF","INF"]]})
 
-    model.set_opt_params(**opt_params)
+        for i in range(len(interlayer_hopping_params)):
+            opt_params.update({"interlayer_hopping_params_"+str(i):[[interlayer_hopping_params[i],"-INF","INF"]]})
 
-    calculator = Kliff_calc(model)
-    ca = calculator.create(configs,use_forces=False)
-    hopping_data = {"interlayer":interlayer_hopping_data,"intralayer":intralayer_hopping_data}
-    loss = LossTETBModel(
-        calculator,
-        nprocs=1,
-        hopping_data = hopping_data
-    )
+        for i in range(len(intralayer_hopping_params)):
+            opt_params.update({"intralayer_hopping_params_"+str(i):[[intralayer_hopping_params[i],"-INF","INF"]]})
+
+        model = TETB_KLIFF_Model()
+        interlayer_hopping_data = hopping_training_data(hopping_type="interlayer")
+        intralayer_hopping_data = hopping_training_data(hopping_type="intralayer")
+
+        model.set_opt_params(**opt_params)
+
+        calculator = Kliff_calc(model)
+        ca = calculator.create(configs,use_forces=False)
+        hopping_data = {"interlayer":interlayer_hopping_data,"intralayer":intralayer_hopping_data}
+        loss = LossTETBModel(
+            calculator,
+            nprocs=1,
+            hopping_data = hopping_data
+        )
+
+    elif use_model=="classical":
+        rebo_params = np.array([0.14687637217609084,4.683462616941604,12433.64356176609,12466.479169306709,19.121905577450008,
+                                     30.504342033258325,4.636516235627607,1.3641304165817836,1.3878198074813923])
+        kc_params = np.array([3.379423382381699, 18.184672181803677, 13.394207130830571, 0.003559135312169, 6.074935002291668,
+                                        0.719345289329483, 3.293082477932360, 13.906782892134125])
+
+        opt_params = {}
+        for i in range(len(rebo_params)):
+            opt_params.update({"rebo_"+str(i):[[rebo_params[i],"-INF","INF"]]})
+
+        for i in range(len(kc_params)):
+            opt_params.update({"kc_"+str(i):[[kc_params[i],"-INF","INF"]]})
+
+
+        model = BLG_Classical()
+
+        model.set_opt_params(**opt_params)
+
+        calculator = Kliff_calc(model)
+        ca = calculator.create(configs,use_forces=False)
+        residual_data = {"normalize_by_natoms": True}
+        loss = Loss(
+            calculator,
+            nprocs=1,
+            residual_data=residual_data
+        )
 
     #define hyperparameters
     ndim = calculator.get_num_opt_params()
@@ -159,9 +186,9 @@ if __name__=="__main__":
     for ii, bound in enumerate(bounds):
         p0[:, :, ii] = np.random.uniform(*bound, (ntemps, nwalkers))
     #sampler.pool = MPIPool()
-    samples.pool = Pool(60)
+    #sampler.pool = Pool(60)
     sampler.run_mcmc(p0, iterations)
-    sampler.pool.close() 
+    #sampler.pool.close() 
 
     # Retrieve the chain
     chain = sampler.chain

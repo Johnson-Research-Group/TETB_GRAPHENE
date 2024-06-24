@@ -49,6 +49,37 @@ def init_pylammps(atoms,kc_file = None,rebo_file = None):
     L.command("fix 1 all nve")
     return L
 
+def init_pylammps_classical(atoms,kc_file = None,rebo_file = None):
+    """ create pylammps object and calculate corrective potential energy 
+    """
+    ntypes = len(set(atoms.get_chemical_symbols()))
+    data_file = "tegt.data"
+    ase.io.write(data_file,atoms,format="lammps-data",atom_style = "full")
+    L = PyLammps(verbose=False)
+    L.command("units		metal")
+    L.command("atom_style	full")
+    L.command("atom_modify    sort 0 0.0")  # This is to avoid sorting the coordinates
+    L.command("box tilt large")
+
+    L.command("read_data "+data_file)
+
+    L.command("group top type 1")
+    L.command("mass 1 12.0100")
+
+    L.command("velocity	all create 0.0 87287 loop geom")
+    # Interaction potential for carbon atoms
+    ######################## Potential defition ########################
+
+    L.command("pair_style       hybrid/overlay kolmogorov/crespi/full 10.0 0 rebo ")
+    L.command("pair_coeff       * *   kolmogorov/crespi/full  "+kc_file+"    C") # long-range 
+    L.command("pair_coeff      * * rebo "+rebo_file+" C ")
+
+    ####################################################################
+    L.command("timestep 0.00025")
+    L.command("thermo 1")
+    L.command("fix 1 all nve")
+    return L
+
 def init_pylammps_loop(atoms_dir,kc_file,rebo_file):
     N = len(glob.glob(os.path.join(atoms_dir,"tegt.data_*"),recursive=True))
     L = PyLammps(verbose=False)
@@ -153,7 +184,7 @@ def init_lammps_loop(atoms_dir,kc_file,rebo_file):
     lmp = lammps()
     lmp.file(input_file)
 
-def run_lammps(atoms,kc_file,rebo_file):
+def run_lammps(atoms,kc_file,rebo_file,type="TETB"):
     """ evaluate corrective potential energy, forces in lammps 
     """
     
@@ -163,8 +194,10 @@ def run_lammps(atoms,kc_file,rebo_file):
         top_layer_ind = np.where(np.array(sym)!=sym[0])[0]
         mol_id[top_layer_ind] += 1
         atoms.set_array("mol-id",mol_id)
-
-    L = init_pylammps(atoms,kc_file=kc_file,rebo_file=rebo_file)
+    if type=="TETB":
+        L = init_pylammps(atoms,kc_file=kc_file,rebo_file=rebo_file)
+    elif type=="classical":
+        L = init_pylammps_classical(atoms,kc_file=kc_file,rebo_file=rebo_file)
     forces = np.zeros((atoms.get_global_number_of_atoms(),3))
 
     L.run(0)
@@ -206,6 +239,15 @@ def write_kcinsp(params,kc_file):
     params = params[:9]
     params = " ".join([str(x) for x in params])
     headers = '               '.join(['', "delta","C","C0 ","C2","C4","z0","A6","A8","A10"])
+    with open(kc_file, 'w+') as f:
+        f.write("# Refined parameters for Kolmogorov-Crespi Potential with taper function\n\
+                #\n# "+headers+"         S     rcut\nC C "+params+" 1.0    2.0")
+        
+def write_kc(params,kc_file):
+    """write kc inspired potential """
+    
+    params = " ".join([str(x) for x in params])
+    headers = '               '.join(['','z0', 'C0', 'C2', 'C4', 'C', 'delta', 'lambda', 'A'])
     with open(kc_file, 'w+') as f:
         f.write("# Refined parameters for Kolmogorov-Crespi Potential with taper function\n\
                 #\n# "+headers+"         S     rcut\nC C "+params+" 1.0    2.0")
