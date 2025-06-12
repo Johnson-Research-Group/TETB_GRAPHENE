@@ -119,9 +119,9 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
    
 if __name__=="__main__":
     test_tbforces=False
-    test_tbenergy=False
+    test_tbenergy=True
     test_lammps=False
-    test_bands=True
+    test_bands=False
     test_relaxation=False
     test_scaling=False
     test_kpoints=False
@@ -131,7 +131,7 @@ if __name__=="__main__":
     
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"}, 
                           "basis":"pz",
-                          "kmesh":(1,1,1),
+                          "kmesh":(11,11,1),
                           "parallel":"joblib",
                           "intralayer potential":"Pz rebo",
                           "interlayer potential":"Pz KC inspired",
@@ -263,7 +263,7 @@ if __name__=="__main__":
         #print("difference in energies at d=3.44, = ",(julia_energies_sep[2]-julia_energies_sep[-1])
         #      -(popov_energies_sep[2]-popov_energies_sep[-1]))
         
-        a_ = np.linspace(2.35,2.6,20)
+        """a_ = np.linspace(2.35,2.6,20)
         s= 3.35
         python_energies = np.zeros_like(a_)
         for i,a in enumerate(a_):
@@ -274,7 +274,7 @@ if __name__=="__main__":
 
         plt.plot(a_,python_energies-python_energies[-1])
         plt.savefig("intralayer_energies.png")
-        plt.clf()
+        plt.clf()"""
 
 
     if test_kpoints:

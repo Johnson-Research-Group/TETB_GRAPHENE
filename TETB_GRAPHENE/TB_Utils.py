@@ -6,9 +6,13 @@ import matplotlib.pyplot as plt
 import glob
 import scipy.linalg as spla
 models_functions_interlayer = {'letb':letb_interlayer,
-                                    'mk':mk,
-                                    'popov':popov,
+                                    'mk':mk_hopping,
+                                    'popov':popov_hopping,
                                     "nn":nn_hop}
+overlap_models_functions_interlayer ={'letb':null_overlap,
+                                    'mk':null_overlap,
+                                    'popov':popov_overlap,
+                                    "nn":null_overlap}
 models_cutoff_interlayer={'letb':10,
                         'mk':10,
                         'popov':5.29,
@@ -18,13 +22,17 @@ models_self_energy = {'letb':0,
                     'popov':-5.2887,
                     "nn":0}
 models_functions_intralayer = {'letb':letb_intralayer,
-                                'mk':mk,
-                                'porezag':porezag,
+                                'mk':mk_hopping,
+                                'porezag':porezag_hopping,
                                 "nn":nn_hop}
 models_cutoff_intralayer={'letb':10,
                         'mk':10,
                         'porezag':3.7,
                         "nn":4.4}
+overlap_models_functions_intralayer ={'letb':null_overlap,
+                                    'mk':null_overlap,
+                                    'porezag':porezag_overlap,
+                                    "nn":null_overlap}
 
 def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
     """
@@ -68,12 +76,12 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
         for j_int,j_type in enumerate(layer_type_set):
             if i_type==j_type:
                 hopping_model = models_functions_intralayer[model_type["intralayer"]]
-                overlap_model = porezag_overlap
+                overlap_model = overlap_models_functions_intralayer[model_type["intralayer"]] #porezag_overlap
                 cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
             else:
                 hopping_model = models_functions_interlayer[model_type["interlayer"]]
                 
-                overlap_model = popov_overlap
+                overlap_model = overlap_models_functions_interlayer[model_type["interlayer"]] #popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
             i, j = np.where((distances > 0.1)  & (distances < cutoff))
             di = np.array(diFull)[j]
@@ -88,13 +96,19 @@ def gen_ham_ovrlp(atom_positions, layer_types, cell, kpoint, model_type):
                                            i[valid_indices], j[valid_indices])
             phases = np.exp((1.0j)*np.dot(kpoint,disp.T))
 
-            hoppings = hopping_model(lattice_vectors, atomic_basis,i[valid_indices], 
-                                  j[valid_indices], di[valid_indices], dj[valid_indices])/2  # Divide by 2 since we are double counting every pair
+            hoppings = hopping_model(disp)/2
             overlap_elem = overlap_model(disp)/2
+            amp = hoppings * phases
+            overlap_amp = overlap_elem  * phases
+            """np.add.at(Ham,(i[valid_indices],j[valid_indices]),amp)
+            np.add.at(Ham,(j[valid_indices],i[valid_indices]), np.conj(amp))
+            np.add.at(Overlap,(i[valid_indices],j[valid_indices]), overlap_amp)   
+            np.add.at(Overlap,(j[valid_indices],i[valid_indices]),  np.conj(overlap_amp)) """
+
             Ham[i[valid_indices],j[valid_indices]] += hoppings * phases
             Ham[j[valid_indices],i[valid_indices]] += np.conj(hoppings*phases)
             Overlap[i[valid_indices],j[valid_indices]] +=   overlap_elem  * phases
-            Overlap[j[valid_indices],i[valid_indices]] +=  np.conj(overlap_elem * phases) 
+            Overlap[j[valid_indices],i[valid_indices]] +=  np.conj(overlap_elem * phases)
 
     return Ham, Overlap
 
@@ -129,6 +143,7 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
     occ_eigvals = 2*np.diag(eigvals)
     occ_eigvals[nocc:,nocc:] = 0
     density_matrix =  eigvec @ fd_dist  @ np.conj(eigvec).T
+    charge_density = np.diag(density_matrix)
     energy_density_matrix = eigvec @ occ_eigvals @ np.conj(eigvec).T
     tot_eng = 2 * np.sum(eigvals[:nocc])
 
@@ -145,21 +160,16 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
             djFull += [dy] * natoms
     distances = cdist(atomic_basis, extended_coords)
 
-    gradH = np.zeros((len(diFull),natoms,3))
     for i_int,i_type in enumerate(layer_type_set):
         for j_int,j_type in enumerate(layer_type_set):
 
             if i_type==j_type:
-                hopping_model_grad = porezag_hopping_grad
-                overlap_model_grad = porezag_overlap_grad
                 cutoff = models_cutoff_intralayer[model_type["intralayer"]] * conversion
-                hopping_model = porezag_hopping
-                overlap_model = porezag_overlap
+                hopping_model = models_functions_intralayer[model_type["intralayer"]] #porezag_hopping
+                overlap_model = overlap_models_functions_intralayer[model_type["intralayer"]] #porezag_overlap
             else:
-                hopping_model_grad = popov_hopping_grad
-                overlap_model_grad = popov_overlap_grad
-                hopping_model = popov_hopping
-                overlap_model = popov_overlap
+                hopping_model = models_functions_interlayer[model_type["interlayer"]] #popov_hopping
+                overlap_model = overlap_models_functions_interlayer[model_type["interlayer"]] #popov_overlap
                 cutoff = models_cutoff_interlayer[model_type["interlayer"]] * conversion
 
             indi, indj = np.where((distances > 0.1) & (distances < cutoff))
@@ -173,6 +183,9 @@ def get_hellman_feynman(atomic_basis, layer_types, lattice_vectors, eigvals,eigv
                                            i[valid_indices], j[valid_indices])
             phases = np.exp((1.0j)*np.dot(kpoint,disp.T))
 
+            dist = np.linalg.norm(disp,axis=1)
+            #coulomb_energy = np.sum(charge_density[i[valid_indices]] * charge_density[j[valid_indices]] / dist)
+            #coulomb_forces = charge_density[i[valid_indices]] * charge_density[j[valid_indices]] / dist**2 * (disp/dist)
             #check gradients of hoppings via finite difference
             grad_hop = np.zeros_like(disp)
             grad_overlap = np.zeros_like(disp)

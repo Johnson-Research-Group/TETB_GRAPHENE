@@ -24,6 +24,7 @@ import TETB_GRAPHENE
 from TETB_GRAPHENE.TETB_GRAPHENE_TB import *
 import dask
 from dask.distributed import Client, LocalCluster
+from time import time
 #build ase calculator objects that calculates classical forces in lammps
 #and tight binding forces in parallel
 
@@ -105,16 +106,19 @@ class TETB_GRAPHENE_Calc(Calculator):
         ######################## Potential defition ########################
         
         if ntypes ==2 and self.use_tb:
-            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo 3")
+            #L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 airebo 3")
+            L.command("pair_style       hybrid/overlay reg/dep/poly 10.0 0 rebo")
             L.command("pair_coeff       * *   reg/dep/poly  "+self.kc_file+"   C C") # long-range 
             #L.command("pair_coeff      * * airebo/sigma "+self.rebo_file+" C C")
-            L.command("pair_coeff      * * airebo "+self.rebo_file+" C C")
+            #L.command("pair_coeff      * * airebo "+self.rebo_file+" C C")
+            L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
         elif ntypes==2 and not self.use_tb:
             L.command("pair_style       hybrid/overlay kolmogorov/crespi/full 10.0 0 rebo")
             L.command("pair_coeff       * *   kolmogorov/crespi/full  "+self.kc_file+"   C C") # long-range
             L.command("pair_coeff      * * rebo "+self.rebo_file+" C C")
         elif ntypes==1 and self.use_tb:
-            L.command("pair_style       airebo 3")
+            #L.command("pair_style       airebo 3")
+            L.command("pair_style       rebo")
             L.command("pair_coeff      * * "+self.rebo_file+" C")
         else:
             L.command("pair_style       rebo")
@@ -170,8 +174,8 @@ class TETB_GRAPHENE_Calc(Calculator):
             def func(i):
                 #get energy and force at a single kpoint from gpu
                 kpoint = kpoints[i,:]
-                energy,force = get_tb_forces_energy(positions,atom_types,cell,kpoint,tbparams)
-                return energy,force
+                energy,force,wf = get_tb_forces_energy(positions,atom_types,cell,kpoint,tbparams)
+                return energy,force,wf
         elif calc_type=="force_fd":
             def func(i):
                 #get energy and force at a single kpoint from gpu
@@ -205,12 +209,12 @@ class TETB_GRAPHENE_Calc(Calculator):
         total_force = np.zeros((self.natoms,3))
         total_energy = 0
         
-        for e, f in results:
+        for e, f,w in results:
             total_force += f.real
             total_energy += e
         return total_energy, total_force
     
-    def run_tight_binding(self,atoms,force_type="force"):
+    def run_tight_binding(self,atoms,force_type="force",return_wf = False):
         """get total tight binding energy and forces, using either hellman-feynman theorem or finite difference (expensive). 
         This function handles parallelization over kpoints.
 
@@ -252,11 +256,25 @@ class TETB_GRAPHENE_Calc(Calculator):
 
         #serial
         elif self.parallel=="serial":
-            results = []
+            """results = []
             for i in range(self.nkp):
                 e,f = tb_fxn(i)
                 results.append((e,f))
-            tb_energy, tb_forces = self.reduce_energy(results)
+            tb_energy, tb_forces = self.reduce_energy(results)"""
+
+            tb_forces = np.zeros((self.natoms,3))
+            tb_energy = 0
+            if return_wf:
+                wf_k = np.zeros((self.natoms,self.natoms,self.nkp),dtype=np.complex64)
+            for i in range(self.nkp):
+                if return_wf:
+                    e,f,wf = tb_fxn(i)
+                    wf_k[:,:,i] = np.squeeze(wf)
+                else:
+                    e,f,_ = tb_fxn(i)
+                tb_forces += f.real
+                tb_energy += e
+
         #joblib
         elif self.parallel=="joblib":
             #ncpu = joblib.cpu_count()
@@ -264,7 +282,10 @@ class TETB_GRAPHENE_Calc(Calculator):
             for i in range(self.nkp):
                 tb_energy += np.squeeze(output[i][0])
                 tb_forces += np.squeeze(output[i][1].real)
-        return tb_energy.real/self.nkp, tb_forces.real/self.nkp
+        if return_wf:
+            return tb_energy.real/self.nkp, tb_forces.real/self.nkp, wf_k
+        else:
+            return tb_energy.real/self.nkp, tb_forces.real/self.nkp
     
     def get_band_structure(self,atoms,kpoints):
         """get band structure for a given ase.atoms object and path in kspace.

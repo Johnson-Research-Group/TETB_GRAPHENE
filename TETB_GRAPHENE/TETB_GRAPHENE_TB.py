@@ -51,15 +51,16 @@ def get_tb_forces_energy(atom_positions,mol_id,cell,kpoints,params_str):
 
     Energy = 0
     Forces = np.zeros((natoms, 3), dtype=np.complex64)
+    wf_k = np.zeros((natoms, natoms,nkp), dtype=np.complex64)
     for k in range(nkp):
         Ham,Overlap = gen_ham_ovrlp(atom_positions, mol_id, cell, kpoints[k,:], params_str)
         eigvalues, eigvectors = spla.eigh(Ham,b=Overlap)
         nocc = int(natoms / 2)
         Energy += 2 * np.sum(eigvalues[:nocc])
-
+        wf_k[:,:,k] = eigvectors
         Forces += get_hellman_feynman(atom_positions,mol_id, cell, eigvalues,eigvectors, params_str,kpoints[k,:] )
 
-    return Energy,Forces
+    return Energy,Forces,wf_k
 
 
 def get_tb_forces_energy_fd(atom_positions, mol_id, cell, kpoints, params_str):

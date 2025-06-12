@@ -16,7 +16,7 @@ def get_twist_geom(t,sep,a=2.46):
     :param a: (float) graphene lattice constant in angstroms
     
     :returns: (ase.atoms object)"""
-    p_found, q_found, theta_comp = fg.twist.find_p_q(t)
+    p_found, q_found, theta_comp = fg.twist.find_p_q(t,a_tol=0.1)
     atoms=fg.twist.make_graphene(cell_type="hex",n_layer=2,
                                         p=p_found,q=q_found,lat_con=a,sym=["B","Ti"],
                                         mass=[12.01,12.02],sep=sep,h_vac=20)
@@ -62,16 +62,40 @@ def plot_bands(all_evals,kdat,efermi=None,erange=1.0,colors=['black'],title='',f
 if __name__=="__main__":
     #generate tblg ase.atoms object 
     # **note, graphene layers are labeled with the "mol-id" array. i.e. atoms in layer 1 have mol-id = 1
-    theta = 5.09
+    theta = 9.4 #5.09
     atoms = get_twist_geom(theta,3.35)
-    print(atoms.get_array("mol-id"))
 
+    #############################################################################################################################
+
+    #test MK
+
+    ############################################################################################################################
+    #setup TETB_GRAPHENE calculator
+    calc_folder = "theta_"+str(theta).replace(".","_")
+    model_dict = dict({"tight binding parameters":{"interlayer":"mk","intralayer":"mk"},
+                        "basis":"pz",
+                        "kmesh":(11,11,1),
+                        "parallel":"serial", #other options for parallel include "dask" (good for multinode cases) and "serial"
+                        "intralayer potential":"Pz rebo",
+                        "interlayer potential":"Pz KC inspired",
+                        'output':calc_folder})
+    
+    #calc_obj = TETB_GRAPHENE.TETB_GRAPHENE_calc.TETB_GRAPHENE_Calc(model_dict)
+    #tb_energy, tb_forces = calc_obj.run_tight_binding(atoms,force_type="force")
+    #np.savez("TETB_GRAPHENE_tb_forces_theta_5_09",tb_forces=tb_forces)
+    
+
+    #############################################################################################################################
+
+    #test popov
+
+    ############################################################################################################################
     #setup TETB_GRAPHENE calculator
     calc_folder = "theta_"+str(theta).replace(".","_")
     model_dict = dict({"tight binding parameters":{"interlayer":"popov","intralayer":"porezag"},
                         "basis":"pz",
                         "kmesh":(11,11,1),
-                        "parallel":"joblib", #other options for parallel include "dask" (good for multinode cases) and "serial"
+                        "parallel":"serial", #other options for parallel include "dask" (good for multinode cases) and "serial"
                         "intralayer potential":"Pz rebo",
                         "interlayer potential":"Pz KC inspired",
                         'output':calc_folder})
@@ -80,20 +104,24 @@ if __name__=="__main__":
     atoms.calc = calc_obj
 
     #calculate total energy and forces on system
-    total_energy = atoms.get_potential_energy()
-    total_forces = atoms.get_forces()
+    #total_energy = atoms.get_potential_energy()
+    #total_forces = atoms.get_forces()
 
     #calculate just the tight binding energy and forces
     tb_energy, tb_forces = calc_obj.run_tight_binding(atoms)
+    print("tb energy = ",tb_energy)
+    print("mean forces, std forces = ",np.mean(tb_forces),np.std(tb_forces))
+    print("first few forces = ",tb_forces[:5,:])
 
     #calculate just the residual potential energy from lammps
     Lammps_forces,Lammps_potential_energy,Lammps_tot_energy= calc_obj.run_lammps(atoms)
+    print("Lammps potential energy = ",Lammps_potential_energy)
 
     #run relaxation
-    dyn = FIRE(atoms,
+    """dyn = FIRE(atoms,
                    trajectory=os.path.join(calc_folder,"theta_"+str(theta)+".traj"),
                    logfile=os.path.join(calc_folder,"theta_"+str(theta)+".log"))
-    dyn.run(fmax=0.005)
+    dyn.run(fmax=0.005)"""
 
     #calculate band structure from relaxed structure
     Gamma = [0,   0,   0]
@@ -101,8 +129,8 @@ if __name__=="__main__":
     Kprime = [1/3,2/3,0]
     M = [1/2,0,0]
     sym_pts=[K,Gamma,M,Kprime]
-    nk=60
+    nk=40
     kdat = calc_obj.k_path(sym_pts,nk)
     kpoints = kdat[0]
     evals = calc_obj.get_band_structure(atoms,kpoints)
-    plot_bands(evals,kdat,erange=5,title=r'$\theta=$'+str(theta)+r'$^o$',figname="theta_"+str(theta)+".png")
+    plot_bands(evals,kdat,erange=1.5,title=r'$\theta=$'+str(theta)+r'$^o$',figname="theta_"+str(theta)+".png")

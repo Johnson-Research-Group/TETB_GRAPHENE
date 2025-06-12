@@ -533,6 +533,29 @@ def porezag_grad(lattice_vectors, atomic_basis, i, j, di, dj):
 
 #############################################################################################
 #@njit
+def null_overlap(dR):
+    """pairwise Slater Koster Interlayer overlap parameters for pz orbitals of carbon as parameterized by Popov, Van Alsenoy in
+     "Low-frequency phonons of few-layer graphene within a tight-binding model". function is fully vectorized
+
+    :param dR: (np.ndarray [N,3]) displacement between 2 atoms [bohr]
+
+    :returns: (np.ndarray [N,]) Overlap matrix elements [eV]
+    """
+
+    return np.zeros(np.shape(dR)[0])
+
+def mk_hopping(dR):
+    conversion = 1.0/.529177 #[bohr/angstrom]
+    r = np.linalg.norm(dR,axis=1)
+    a,b,c = -2.7, 1.17, 0.48
+    a0 = 1.42 * conversion
+    d0 = 3.35 * conversion
+    n = (dR[:,2]) / r
+    V_p = a * np.exp(-b * (r - a0))
+    V_s = c * np.exp(-b * (r - d0))
+    hoppings = V_p*(1 - n**2) + V_s * n**2
+    return hoppings
+
 def mk(lattice_vectors, atomic_basis, i, j, di, dj):
     """
     Moon model for bilayer graphene - Moon and Koshino, PRB 85 (2012)
@@ -544,14 +567,8 @@ def mk(lattice_vectors, atomic_basis, i, j, di, dj):
     Output:
         hoppings        - float (n) list of hoppings for the given i, j, di, dj
     """
-    lattice_vectors = np.array(lattice_vectors)
-    atomic_basis = np.array(atomic_basis)
-    i = np.array(i)
-    j = np.array(j)
-    di = np.array(di)
-    dj = np.array(dj)
-    dxy, dz = descriptors.ix_to_dist(lattice_vectors, atomic_basis, di, dj, i, j)
-    hoppings = moon([np.sqrt(dz**2 + dxy**2), dz], -2.7, 1.17, 0.48)
+    disp = descriptors.ix_to_disp(lattice_vectors, atomic_basis, di, dj, i, j)
+    hoppings = mk_hopping(disp)
     return hoppings
 #@njit
 def nn_hop(lattice_vectors, atomic_basis, i, j, di, dj) :
