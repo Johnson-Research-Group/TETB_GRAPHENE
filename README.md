@@ -24,6 +24,7 @@ Once pylammps has been installed, install TETB_GRAPHENE using pip
     - relaxations
     - total energy calculations
     - band structure calculations
+ * *_RELAXATIONS.ZIP contain relaxed structures and band structures for all strained and unstrained structures. TETB+REBO+KC and REBO+KC relaxations are included
 
 # GPU capabilities
 The TETB_GRAPHENE_GPU branch contains the same code as the default branch, however, it is written using cupy in order to speed up calculations for large systems. 
